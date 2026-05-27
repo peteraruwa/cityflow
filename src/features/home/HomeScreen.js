@@ -474,3 +474,6 @@ const s = StyleSheet.create({
   updateTime:   { fontSize:10, color:'#504460' },
   updateBody:   { fontSize:11.5, color:'#8C7DA0', lineHeight:16 },
 });
+
+
+
