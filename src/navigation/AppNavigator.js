@@ -7,15 +7,16 @@ import MainTabs     from './MainTabs';
 export default function AppNavigator() {
   const [screen, setScreen] = useState('splash');
 
-  if (screen === 'splash') return <SplashScreen onDone={() => setScreen('login')} />;
-  if (screen === 'login')  return (
-    <NavigationContainer>
-      <LoginScreen onLogin={() => setScreen('app')} />
-    </NavigationContainer>
-  );
+  if (screen === 'splash') {
+    return <SplashScreen onDone={() => setScreen('login')} />;
+  }
+
   return (
     <NavigationContainer>
-      <MainTabs onLogout={() => setScreen('login')} />
+      {screen === 'login'
+        ? <LoginScreen onLogin={() => setScreen('app')} />
+        : <MainTabs onLogout={() => setScreen('login')} />
+      }
     </NavigationContainer>
   );
 }
