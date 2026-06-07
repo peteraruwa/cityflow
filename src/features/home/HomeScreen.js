@@ -11,7 +11,7 @@ import {
   Animated,
   Linking,
   Modal,
-  TouchableWithoutFeedback,
+  Pressable,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
@@ -38,6 +38,7 @@ import {
   Siren,
   Utensils,
   PhoneCall,
+  Compass,
 } from "lucide-react-native";
 
 // Shared components & data
@@ -56,10 +57,13 @@ import OpenHeavenDevotional from "../devotional/OpenHeavenDevotional";
 import NotificationsPanel from "../notifications/NotificationsPanel";
 import EventsPreview from "../events/EventsPreview";
 
+// Firebase
+import { auth } from "../../shared/config/firebase";   // ✅ added
+
 // ============================================================
 // COMPONENT
 // ============================================================
-export default function HomeScreen({ userName = "Peter" }) {
+export default function HomeScreen() {  // ✅ removed userName prop
   // -----------------------------------------------------------------
   // NAVIGATION & ANIMATION
   // -----------------------------------------------------------------
@@ -70,12 +74,14 @@ export default function HomeScreen({ userName = "Peter" }) {
   // STATE
   // -----------------------------------------------------------------
   const [notificationsUnread, setNotificationsUnread] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false); // moved inside
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [userName, setUserName] = useState("Guest");   // ✅ dynamic user name
   const ACTIONS = getActions(navigation);
 
   // -----------------------------------------------------------------
   // EFFECTS
   // -----------------------------------------------------------------
+  // Animate live dot
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -89,7 +95,7 @@ export default function HomeScreen({ userName = "Peter" }) {
           duration: 800,
           useNativeDriver: false,
         }),
-      ]),
+      ])
     );
     loop.start();
     return () => loop.stop();
@@ -102,6 +108,23 @@ export default function HomeScreen({ userName = "Peter" }) {
     };
     checkUnread();
   }, []);
+
+  // ✅ Fetch current user's name from Firebase
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      let name = user.displayName;
+      if (name) {
+        // Extract first name from full name
+        const firstName = name.split(' ')[0];
+        setUserName(firstName);
+      } else if (user.email) {
+        // Fallback: use part before '@'
+        const emailPrefix = user.email.split('@')[0];
+        setUserName(emailPrefix);
+      }
+    }
+  }, []);  // runs once on mount
 
   // -----------------------------------------------------------------
   // HELPERS
@@ -190,10 +213,7 @@ export default function HomeScreen({ userName = "Peter" }) {
             <View style={s.heroMeta}>
               <View style={s.heroMetaRow}>
                 <Building2 size={11} color={C.gold} strokeWidth={1.8} />
-                <Text style={s.heroMetaTxt}>
-                  {" "}
-                  Main Auditorium · Redemption City
-                </Text>
+                <Text style={s.heroMetaTxt}> Main Auditorium · Redemption City</Text>
               </View>
               <View style={s.heroMetaRow}>
                 <Clock size={11} color={C.gold} strokeWidth={1.8} />
@@ -310,6 +330,34 @@ export default function HomeScreen({ userName = "Peter" }) {
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+
+        {/* Virtual Tour Preview */}
+        <View style={s.section}>
+          <SectionHeader
+            title="Virtual Tour"
+            action="Explore 360°"
+            onAction={() => navigation.navigate("VirtualTour")}
+          />
+          <TouchableOpacity
+            onPress={() => navigation.navigate("VirtualTour")}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={["rgba(113,40,206,0.18)", "rgba(10,2,24,1)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.virtualTourCard}
+            >
+              <Compass size={28} color={C.gold} />
+              <View style={s.virtualTourText}>
+                <Text style={s.virtualTourTitle}>Immersive 360° Tour</Text>
+                <Text style={s.virtualTourDesc}>
+                  Explore Redemption City in stunning 360° panoramic views.
+                </Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
 
         {/* CityFlow AI preview */}
@@ -661,9 +709,10 @@ export default function HomeScreen({ userName = "Peter" }) {
         animationType="slide"
         onRequestClose={() => setShowNotifications(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setShowNotifications(false)}>
-          <View style={s.modalOverlay} />
-        </TouchableWithoutFeedback>
+        <Pressable
+          style={s.modalOverlay}
+          onPress={() => setShowNotifications(false)}
+        />
         <View style={s.notificationPanel}>
           <View style={s.panelHandle} />
           <NotificationsPanel onClose={() => setShowNotifications(false)} />
@@ -1152,6 +1201,28 @@ const s = StyleSheet.create({
     paddingVertical: 4,
   },
   quizBadgeTxt: { fontSize: 9.5, color: "#8C7DA0" },
+  virtualTourCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(113,40,206,0.3)",
+    padding: 18,
+    marginTop: 8,
+  },
+  virtualTourText: { flex: 1 },
+  virtualTourTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#EBE3D6",
+    marginBottom: 4,
+  },
+  virtualTourDesc: {
+    fontSize: 12,
+    color: "#8C7DA0",
+    lineHeight: 16,
+  },
   updatesList: { gap: 10, marginTop: 14 },
   updateCard: {
     backgroundColor: "rgba(255,255,255,0.04)",

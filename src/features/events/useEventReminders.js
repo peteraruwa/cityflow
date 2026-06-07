@@ -1,13 +1,23 @@
-import * as Notifications from 'expo-notifications';
+// src/features/events/useEventReminders.js
 import { Platform } from 'react-native';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Local notifications – only import on native (not web)
+let Notifications;
+try {
+  Notifications = require('expo-notifications');
+  // Configure the handler once (only on native)
+  if (Notifications) {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  }
+} catch (e) {
+  console.warn('expo-notifications not available, reminders disabled');
+}
 
 // Helper: convert "6:00 PM" or "18:00" to 24‑hour format
 function parseTimeTo24Hour(timeStr) {
@@ -22,19 +32,22 @@ function parseTimeTo24Hour(timeStr) {
 }
 
 export async function scheduleEventReminders(event, reminderSettings) {
+  // If notifications module is not available, silently ignore
+  if (!Notifications || Platform.OS === 'web') return;
+
   const { date, time, title, id } = event;
   const [year, month, day] = date.split('-');
   const { hour, minute } = parseTimeTo24Hour(time);
   const eventDate = new Date(year, month - 1, day, hour, minute);
 
   // Cancel existing notifications
-  await Notifications.cancelScheduledNotificationAsync(`${id}_day_before`);
-  await Notifications.cancelScheduledNotificationAsync(`${id}_day_of`);
+  await Notifications.cancelScheduledNotificationAsync(`${id}_day_before`).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(`${id}_day_of`).catch(() => {});
 
   if (reminderSettings.reminderDayBefore) {
     const dayBefore = new Date(eventDate);
     dayBefore.setDate(dayBefore.getDate() - 1);
-    dayBefore.setHours(9, 0, 0); // remind at 9 AM day before
+    dayBefore.setHours(9, 0, 0);
     if (dayBefore > new Date()) {
       await Notifications.scheduleNotificationAsync({
         identifier: `${id}_day_before`,
@@ -44,13 +57,13 @@ export async function scheduleEventReminders(event, reminderSettings) {
           data: { eventId: id },
         },
         trigger: { date: dayBefore },
-      });
+      }).catch(e => console.warn('Failed to schedule day-before reminder', e));
     }
   }
 
   if (reminderSettings.reminderDayOf) {
     const dayOf = new Date(eventDate);
-    dayOf.setHours(dayOf.getHours() - 1); // 1 hour before event
+    dayOf.setHours(dayOf.getHours() - 1);
     if (dayOf > new Date()) {
       await Notifications.scheduleNotificationAsync({
         identifier: `${id}_day_of`,
@@ -60,7 +73,7 @@ export async function scheduleEventReminders(event, reminderSettings) {
           data: { eventId: id },
         },
         trigger: { date: dayOf },
-      });
+      }).catch(e => console.warn('Failed to schedule day-of reminder', e));
     }
   }
 }

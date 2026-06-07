@@ -1,3 +1,4 @@
+import 'punycode';
 import '@expo/metro-runtime';
 import { registerRootComponent } from 'expo';
 

@@ -1,5 +1,5 @@
 // src/features/auth/SignUpScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Alert
@@ -10,7 +10,8 @@ import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth } from "../../shared/config/firebase";
 
 export default function SignUpScreen({ onSignUp, onBackToLogin }) {
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -20,7 +21,7 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
   const [loading, setLoading] = useState(false);
 
   async function handleSignUp() {
-    if (!name || !email || !pass || !confirmPass) {
+    if (!firstName || !lastName || !email || !pass || !confirmPass) {
       Alert.alert("Missing fields", "Please fill in all fields.");
       return;
     }
@@ -35,9 +36,10 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-      await updateProfile(userCredential.user, { displayName: name });
+      const fullName = `${firstName} ${lastName}`.trim();
+      await updateProfile(userCredential.user, { displayName: fullName });
       Alert.alert("Account created", "Welcome to CityFlow!");
-      setTimeout(() => onSignUp(userCredential.user), 500);
+      onSignUp(userCredential.user);
     } catch (error) {
       console.error("SignUp error:", error);
       let message = "Sign up failed. Please try again.";
@@ -65,15 +67,29 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
         <Text style={s.title}>Create account</Text>
         <Text style={s.subtitle}>Sign up to get started</Text>
 
-        <View style={[fldStyle('name'), s.fieldRow]}>
+        <View style={[fldStyle('firstName'), s.fieldRow]}>
           <User size={16} color="rgba(255,255,255,0.4)" strokeWidth={2} />
           <TextInput
             style={s.textInput}
-            placeholder="Full Name"
+            placeholder="First Name"
             placeholderTextColor="rgba(255,255,255,0.3)"
-            value={name}
-            onChangeText={setName}
-            onFocus={() => setFocused('name')}
+            value={firstName}
+            onChangeText={setFirstName}
+            onFocus={() => setFocused('firstName')}
+            onBlur={() => setFocused(null)}
+            autoCapitalize="words"
+          />
+        </View>
+
+        <View style={[fldStyle('lastName'), s.fieldRow]}>
+          <User size={16} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+          <TextInput
+            style={s.textInput}
+            placeholder="Last Name"
+            placeholderTextColor="rgba(255,255,255,0.3)"
+            value={lastName}
+            onChangeText={setLastName}
+            onFocus={() => setFocused('lastName')}
             onBlur={() => setFocused(null)}
             autoCapitalize="words"
           />

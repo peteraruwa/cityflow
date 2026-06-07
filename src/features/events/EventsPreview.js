@@ -27,6 +27,36 @@ import { db } from "../../shared/config/firebase";
 import SectionHeader from "../../shared/components/SectionHeader";
 import { C } from "../../shared/constants/theme";
 
+// Helper function to check if a date matches a recurrence rule
+function matchesRecurrence(date, recurrence, eventStartDate) {
+  if (!recurrence || recurrence.type !== 'monthly') return false;
+
+  const targetYear = date.getFullYear();
+  const targetMonth = date.getMonth();
+
+  const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const matchingDays = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(targetYear, targetMonth, d);
+    if (dt.getDay() === recurrence.dayOfWeek) {
+      matchingDays.push(d);
+    }
+  }
+
+  let targetDay;
+  if (recurrence.weekOfMonth === -1) {
+    targetDay = matchingDays[matchingDays.length - 1];
+  } else {
+    const idx = recurrence.weekOfMonth - 1;
+    targetDay = matchingDays[idx];
+  }
+  if (!targetDay) return false;
+
+  const start = new Date(eventStartDate);
+  const candidate = new Date(targetYear, targetMonth, targetDay);
+  return candidate >= start && date.toDateString() === candidate.toDateString();
+}
+
 export default function EventsPreview({ onSeeAllPress, onEventPress }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
