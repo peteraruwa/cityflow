@@ -1,106 +1,109 @@
 // App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { onAuthStateChanged } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import { auth } from './src/shared/config/firebase';
 import AppNavigator from './src/navigation/AppNavigator';
 import LoginScreen from './src/features/auth/LoginScreen';
 import OnboardingScreen from './src/features/onboarding/OnboardingScreen';
 import { PrefsProvider } from './src/shared/context/PrefsContext';
-import * as Notifications from 'expo-notifications';
-import 'punycode';
 
-console.log('🚀 App.js loaded');
+// Hold splash screen until app is fully ready
+SplashScreen.preventAutoHideAsync();
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [appReady, setAppReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [onboardingDone, setOnboardingDone] = useState(false);
-  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
-  // Check onboarding status
   useEffect(() => {
-    console.log('🔍 Checking onboarding status...');
-    const checkOnboarding = async () => {
+    let authUnsubscribe;
+
+    const prepare = async () => {
       try {
-        const done = await AsyncStorage.getItem('onboarding_done');
-        setOnboardingDone(done === 'true');
-        console.log('📌 Onboarding done:', done === 'true');
+        // Run onboarding check and auth listener setup in parallel
+        const [onboardingValue] = await Promise.all([
+          AsyncStorage.getItem('onboarding_done'),
+          requestNotificationPermission(),
+        ]);
+
+        setOnboardingDone(onboardingValue === 'true');
+
+        // Set up auth listener — resolves once on first emission
+        await new Promise((resolve) => {
+          authUnsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+            setCurrentUser(firebaseUser);
+            resolve(); // only needed for first call
+          });
+        });
+
       } catch (error) {
-        console.error('Failed to read onboarding status', error);
+        console.error('App prepare error:', error);
       } finally {
-        setCheckingOnboarding(false);
+        setAppReady(true);
       }
     };
-    checkOnboarding();
-  }, []);
 
-  // Listen to auth state changes
-  useEffect(() => {
-    console.log('👤 Setting up auth listener...');
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('🔥 Auth state changed, user:', user?.email || 'null');
-      setUser(user);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+    prepare();
 
-  // Request notification permissions
-  useEffect(() => {
-    const requestPermissions = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('⚠️ Notification permissions not granted');
-      } else {
-        console.log('✅ Notification permissions granted');
-      }
+    return () => {
+      if (authUnsubscribe) authUnsubscribe();
     };
-    requestPermissions();
   }, []);
 
-  if (checkingOnboarding || loading) {
-    console.log('⏳ Waiting for onboarding/auth...');
-    return null; // or a splash screen component
-  }
+  // Hide splash only after first real frame is painted
+  const onLayoutRootView = useCallback(async () => {
+    if (appReady) await SplashScreen.hideAsync();
+  }, [appReady]);
 
-  // First-time user → show onboarding
-  if (!onboardingDone) {
-    console.log('🆕 First-time user, showing onboarding');
-    return (
-      <SafeAreaProvider>
-        <PrefsProvider>
-          <OnboardingScreen onDone={() => {
-            console.log('✅ Onboarding completed');
-            setOnboardingDone(true);
-          }} />
-        </PrefsProvider>
-      </SafeAreaProvider>
-    );
-  }
+  if (!appReady) return null;
 
-  // Already onboarded → normal auth flow
-  if (!user) {
-    console.log('🔐 No user, showing LoginScreen');
-    return (
-      <SafeAreaProvider>
-        <PrefsProvider>
-          <LoginScreen onLogin={(user) => {
-            console.log('✅ User logged in:', user?.email);
-            setUser(user);
-          }} />
-        </PrefsProvider>
-      </SafeAreaProvider>
-    );
-  }
+  const renderContent = () => {
+    if (!onboardingDone) {
+      return (
+        <OnboardingScreen
+          onDone={() => setOnboardingDone(true)}
+        />
+      );
+    }
+    if (!currentUser) {
+      return (
+        <LoginScreen
+          onLogin={(firebaseUser) => setCurrentUser(firebaseUser)}
+        />
+      );
+    }
+    return <AppNavigator />;
+  };
 
-  console.log('🏠 User logged in, showing main app');
   return (
     <SafeAreaProvider>
       <PrefsProvider>
-        <AppNavigator />
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          {renderContent()}
+        </View>
       </PrefsProvider>
     </SafeAreaProvider>
   );
+}
+
+async function requestNotificationPermission() {
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+
+    // Don't re-request if already determined
+    if (existingStatus === 'granted' || existingStatus === 'denied') return;
+
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Notification permissions not granted');
+    }
+  } catch (error) {
+    // Non-fatal — app works fine without notifications
+    console.warn('Notification permission error:', error);
+  }
 }

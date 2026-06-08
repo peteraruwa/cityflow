@@ -1,69 +1,140 @@
 // src/features/picture-day/PictureOfTheDay.js
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+
+import React, { useRef, useEffect } from 'react';
+import {
+  Image,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPictureOfTheDay } from './data/gallery';
 
-const STORAGE_KEY = '@daily_picture';
-const DEFAULT_PICTURE = {
-  url: 'https://images.unsplash.com/photo-1542810634-71277d95dcbb?w=800&h=400&fit=crop',
-  title: 'Redemption City Worship Center',
-  photographer: 'CityFlow Media',
-};
+export default function PictureOfTheDay({ navigation }) {
+  const { picture, index } = getPictureOfTheDay();
 
-export default function PictureOfTheDay({ onPressGallery }) {
-  const [picture, setPicture] = useState(DEFAULT_PICTURE);
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(16)).current;
 
   useEffect(() => {
-    loadDailyPicture();
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 550, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 450, delay: 100, useNativeDriver: true }),
+    ]).start();
   }, []);
 
-  const loadDailyPicture = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      const today = new Date().toDateString();
-      if (stored) {
-        const { picture: savedPic, date } = JSON.parse(stored);
-        if (date === today) {
-          setPicture(savedPic);
-          return;
-        }
-      }
-      // For production, replace with API fetch
-      const newPicture = DEFAULT_PICTURE;
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ picture: newPicture, date: today }));
-      setPicture(newPicture);
-    } catch (error) {
-      console.error('Picture loading error', error);
-    }
-  };
-
   return (
-    <View style={s.container}>
-      <TouchableOpacity style={s.card} onPress={onPressGallery} activeOpacity={0.92}>
-        <Image source={{ uri: picture.url }} style={s.image} />
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={s.overlay}>
-          <Text style={s.title}>{picture.title}</Text>
-          <Text style={s.photographer}>📷 {picture.photographer}</Text>
-        </LinearGradient>
-        <View style={s.glowBorder} />
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={() => navigation.navigate('PictureGallery', { highlightIndex: index })}
+        style={s.card}
+      >
+        <Image source={picture.file} style={s.image} resizeMode="cover" />
+
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.78)']}
+          style={s.gradient}
+        />
+
+        <View style={[s.catBadge, { backgroundColor: picture.categoryColor }]}>
+          <Text style={s.catText}>{picture.category.toUpperCase()}</Text>
+        </View>
+
+        <View style={s.textBlock}>
+          <Text style={s.title} numberOfLines={2}>{picture.title}</Text>
+          <Text style={s.date}>{picture.date}</Text>
+          <Text style={s.caption} numberOfLines={2}>{picture.caption}</Text>
+        </View>
+
+        <View style={s.pill}>
+          <Text style={s.pillText}>Read the story →</Text>
+        </View>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { marginTop: 8, marginBottom: 12 },
+  // No marginHorizontal — HomeScreen's s.section already has paddingHorizontal: 18
   card: {
-    borderRadius: 24,
+    height: 250,
+    borderRadius: 20,
     overflow: 'hidden',
-    height: 190,
-    textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
-    elevation: 6,
+    backgroundColor: '#111',
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
   },
-  image: { width: '100%', height: '100%', resizeMode: 'cover' },
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 18 },
-  title: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
-  photographer: { fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
-  glowBorder: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(113,40,206,0.3)' },
+  image: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  gradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+  },
+  catBadge: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  catText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+  },
+  textBlock: {
+    position: 'absolute',
+    bottom: 44,
+    left: 16,
+    right: 16,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 26,
+    marginBottom: 3,
+  },
+  date: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  caption: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pill: {
+    position: 'absolute',
+    bottom: 14,
+    right: 14,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  pillText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
 });

@@ -1,0 +1,695 @@
+// src/features/navigation/screens/NavigationScreen.js
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  Platform,
+  Animated,
+  Dimensions,
+} from 'react-native';
+import { WebView } from 'react-native-webview';
+import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ChevronLeft,
+  MapPin,
+  Clock,
+  Route,
+  X,
+  ChevronUp,
+  ChevronDown,
+  Locate,
+  Navigation2,
+  Compass,
+} from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import {
+  CAMP_LOCATIONS,
+  CAMP_REGION,
+  OSRM_BASE_URL,
+} from '../data/locations';
+import { C } from '../../../shared/constants/theme';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SHEET_PEEK = 220;
+
+const PURPLE   = '#7128CE';
+const PURPLE_L = '#9B5CF6';
+const GOLD     = '#C48D38';
+const BG       = '#08011A';
+const SURF     = 'rgba(255,255,255,0.04)';
+const SURF_HI  = '#0F0A1E';
+const BORDER   = 'rgba(255,255,255,0.07)';
+const TEXT_PRI = '#EBE3D6';
+const TEXT_SEC = '#8C7DA0';
+const TEXT_MUT = '#504460';
+const RED      = '#D44F4F';
+
+// ─── Leaflet HTML ─────────────────────────────────────────────────────────────
+const buildMapHTML = () => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; background: #08011A; }
+    .leaflet-control-attribution { display: none; }
+
+    .user-pulse {
+      width: 22px; height: 22px;
+      background: ${PURPLE};
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(113,40,206,0.5);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(113,40,206,0.5); }
+      70%  { box-shadow: 0 0 0 12px rgba(113,40,206,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(113,40,206,0);   }
+    }
+    .dest-marker {
+      width: 16px; height: 16px;
+      background: ${RED};
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 10px rgba(212,79,79,0.6);
+    }
+    .landmark-dot {
+      width: 8px; height: 8px;
+      background: ${GOLD};
+      border: 1.5px solid rgba(255,255,255,0.6);
+      border-radius: 50%;
+      box-shadow: 0 0 4px rgba(196,141,56,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', { zoomControl: false, attributionControl: false })
+      .setView([${CAMP_REGION.latitude}, ${CAMP_REGION.longitude}], 16);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    var userMarker = null, destMarker = null, routeLayer = null;
+
+    var landmarks = ${JSON.stringify(CAMP_LOCATIONS)};
+    landmarks.forEach(function(loc) {
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="landmark-dot"></div>',
+        iconSize: [8, 8],
+        iconAnchor: [4, 4],
+      });
+      L.marker([loc.lat, loc.lng], { icon: icon })
+        .addTo(map)
+        .bindTooltip(loc.shortName, {
+          permanent: false,
+          direction: 'top',
+          offset: [0, -8],
+          className: 'leaflet-tooltip-dark',
+        });
+    });
+
+    document.addEventListener('message', handleMessage);
+    window.addEventListener('message', handleMessage);
+
+    function handleMessage(event) {
+      try {
+        var msg = JSON.parse(event.data);
+        if (msg.type === 'UPDATE_LOCATION') updateUserLocation(msg.lat, msg.lng);
+        if (msg.type === 'DRAW_ROUTE')  drawRoute(msg.coords, msg.destLat, msg.destLng);
+        if (msg.type === 'CLEAR_ROUTE') clearRoute();
+        if (msg.type === 'CENTER_USER') {
+          if (userMarker) map.setView(userMarker.getLatLng(), 17, { animate: true });
+        }
+      } catch(e) {}
+    }
+
+    function updateUserLocation(lat, lng) {
+      var userIcon = L.divIcon({
+        className: '',
+        html: '<div class="user-pulse"></div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      if (!userMarker) {
+        userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+        map.setView([lat, lng], 17, { animate: true });
+      } else {
+        userMarker.setLatLng([lat, lng]);
+      }
+    }
+
+    function drawRoute(coords, destLat, destLng) {
+      if (routeLayer) map.removeLayer(routeLayer);
+      if (destMarker) map.removeLayer(destMarker);
+
+      var latlngs = coords.map(function(c) { return [c[1], c[0]]; });
+
+      // Shadow layer
+      L.polyline(latlngs, {
+        color: 'rgba(113,40,206,0.18)',
+        weight: 12,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(map);
+
+      routeLayer = L.polyline(latlngs, {
+        color: '${PURPLE_L}',
+        weight: 5,
+        opacity: 0.95,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(map);
+
+      var destIcon = L.divIcon({
+        className: '',
+        html: '<div class="dest-marker"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      destMarker = L.marker([destLat, destLng], { icon: destIcon, zIndexOffset: 900 }).addTo(map);
+      map.fitBounds(routeLayer.getBounds(), { padding: [70, 70] });
+    }
+
+    function clearRoute() {
+      if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+      if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+    }
+  </script>
+</body>
+</html>
+`;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const formatDuration = (seconds) => {
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+};
+const formatDistance = (metres) => {
+  if (metres < 1000) return `${Math.round(metres)} m`;
+  return `${(metres / 1000).toFixed(1)} km`;
+};
+
+const CATEGORY_COLORS = {
+  worship:       PURPLE,
+  landmark:      GOLD,
+  facility:      '#2A7FAB',
+  medical:       RED,
+  food:          GOLD,
+  retail:        '#3DAA6E',
+  accommodation: '#2A7FAB',
+  admin:         TEXT_SEC,
+  sports:        '#4AAD8E',
+};
+
+const CATEGORY_LABELS = {
+  worship:       'Worship',
+  landmark:      'Landmark',
+  facility:      'Facility',
+  medical:       'Medical',
+  food:          'Food',
+  retail:        'Retail',
+  accommodation: 'Stay',
+  admin:         'Admin',
+  sports:        'Sports',
+};
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+export default function NavigationScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const webviewRef  = useRef(null);
+  const locationSub = useRef(null);
+  const sheetAnim   = useRef(new Animated.Value(SHEET_PEEK)).current;
+
+  const [userLocation,  setUserLocation]  = useState(null);
+  const [locationError, setLocationError] = useState(null);
+  const [destination,   setDestination]   = useState(null);
+  const [routeInfo,     setRouteInfo]     = useState(null);
+  const [loadingRoute,  setLoadingRoute]  = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [mapReady,      setMapReady]      = useState(false);
+
+  // Location
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationError('Location permission denied. Enable it in Settings to use navigation.');
+        return;
+      }
+      const initial = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation(initial.coords);
+      locationSub.current = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 8 },
+        (loc) => {
+          setUserLocation(loc.coords);
+          sendToMap({ type: 'UPDATE_LOCATION', lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      );
+    })();
+    return () => locationSub.current?.remove();
+  }, []);
+
+  useEffect(() => {
+    if (mapReady && userLocation) {
+      sendToMap({ type: 'UPDATE_LOCATION', lat: userLocation.latitude, lng: userLocation.longitude });
+    }
+  }, [mapReady]);
+
+  const sendToMap = useCallback((obj) => {
+    webviewRef.current?.injectJavaScript(
+      `document.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify(obj).replace(/'/g, "\\'")}' }));true;`
+    );
+  }, []);
+
+  const fetchRoute = useCallback(async (dest) => {
+    if (!userLocation) return;
+    setLoadingRoute(true);
+    setRouteInfo(null);
+    try {
+      const url = `${OSRM_BASE_URL}/${userLocation.longitude},${userLocation.latitude};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
+      const res  = await fetch(url);
+      const json = await res.json();
+      if (json.code === 'Ok' && json.routes.length > 0) {
+        const route = json.routes[0];
+        setRouteInfo({ distance: route.distance, duration: route.duration });
+        sendToMap({ type: 'DRAW_ROUTE', coords: route.geometry.coordinates, destLat: dest.lat, destLng: dest.lng });
+      }
+    } catch (e) {
+      sendToMap({ type: 'DRAW_ROUTE', coords: [], destLat: dest.lat, destLng: dest.lng });
+    } finally {
+      setLoadingRoute(false);
+    }
+  }, [userLocation, sendToMap]);
+
+  const handleSelectDestination = useCallback((loc) => {
+    setDestination(loc);
+    collapseSheet();
+    fetchRoute(loc);
+  }, [fetchRoute]);
+
+  const handleClearRoute = useCallback(() => {
+    setDestination(null);
+    setRouteInfo(null);
+    sendToMap({ type: 'CLEAR_ROUTE' });
+  }, [sendToMap]);
+
+  const expandSheet = () => {
+    setSheetExpanded(true);
+    Animated.spring(sheetAnim, { toValue: SCREEN_HEIGHT * 0.58, useNativeDriver: false, damping: 18, stiffness: 160 }).start();
+  };
+  const collapseSheet = () => {
+    setSheetExpanded(false);
+    Animated.spring(sheetAnim, { toValue: SHEET_PEEK, useNativeDriver: false, damping: 18, stiffness: 160 }).start();
+  };
+  const toggleSheet = () => sheetExpanded ? collapseSheet() : expandSheet();
+
+  const accentColor = destination ? (CATEGORY_COLORS[destination.category] || PURPLE) : PURPLE;
+
+  const renderLocation = useCallback(({ item }) => {
+    const color   = CATEGORY_COLORS[item.category] || PURPLE;
+    const isActive = destination?.id === item.id;
+    const catLabel = CATEGORY_LABELS[item.category] || item.category;
+    return (
+      <TouchableOpacity
+        style={[
+          s.locItem,
+          isActive && { backgroundColor: color + '14', borderColor: color + '55' },
+        ]}
+        onPress={() => handleSelectDestination(item)}
+        activeOpacity={0.75}
+      >
+        {/* Left icon */}
+        <View style={[s.locIcon, { backgroundColor: color + '1C', borderColor: color + '30' }]}>
+          <Text style={s.locEmoji}>{item.icon}</Text>
+        </View>
+
+        {/* Text */}
+        <View style={s.locText}>
+          <Text style={[s.locName, isActive && { color }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={s.locDesc} numberOfLines={1}>{item.description}</Text>
+        </View>
+
+        {/* Category tag */}
+        <View style={[s.catTag, { backgroundColor: color + '18', borderColor: color + '30' }]}>
+          <Text style={[s.catTagTxt, { color }]}>{catLabel}</Text>
+        </View>
+
+        {/* Active indicator */}
+        {isActive && <View style={[s.activeBar, { backgroundColor: color }]} />}
+      </TouchableOpacity>
+    );
+  }, [destination, handleSelectDestination]);
+
+  return (
+    <View style={[s.root, { paddingTop: insets.top }]}>
+
+      {/* ── Header ── */}
+      <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={s.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <ChevronLeft size={20} color={TEXT_PRI} strokeWidth={2.2} />
+        </TouchableOpacity>
+
+        <View style={s.headerCenter}>
+          <View style={s.headerTitleRow}>
+            <Compass size={13} color={GOLD} strokeWidth={2} />
+            <Text style={s.headerTitle}>Navigate</Text>
+          </View>
+          <Text style={s.headerSub}>Redemption City · Camp Map</Text>
+        </View>
+
+        <View style={{ width: 36 }} />
+      </View>
+
+      {/* ── Map ── */}
+      <View style={s.mapContainer}>
+        {locationError ? (
+          <View style={s.errorState}>
+            <View style={s.errorIconWrap}>
+              <MapPin size={28} color={TEXT_MUT} strokeWidth={1.5} />
+            </View>
+            <Text style={s.errorTitle}>Location Unavailable</Text>
+            <Text style={s.errorBody}>{locationError}</Text>
+          </View>
+        ) : (
+          <WebView
+            ref={webviewRef}
+            source={{ html: buildMapHTML() }}
+            style={s.map}
+            onLoadEnd={() => setMapReady(true)}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
+            mixedContentMode="always"
+            allowsInlineMediaPlayback
+          />
+        )}
+
+        {/* Route info pill */}
+        {routeInfo && !loadingRoute && (
+          <View style={[s.infoPill, { borderColor: accentColor + '55' }]}>
+            <LinearGradient
+              colors={[SURF_HI, BG]}
+              style={s.infoPillGrad}
+            >
+              <View style={s.pillStat}>
+                <Route size={12} color={accentColor} strokeWidth={2.5} />
+                <Text style={[s.pillStatVal, { color: accentColor }]}>
+                  {formatDistance(routeInfo.distance)}
+                </Text>
+                <Text style={s.pillStatLabel}>away</Text>
+              </View>
+              <View style={s.pillDivider} />
+              <View style={s.pillStat}>
+                <Clock size={12} color={accentColor} strokeWidth={2.5} />
+                <Text style={[s.pillStatVal, { color: accentColor }]}>
+                  {formatDuration(routeInfo.duration)}
+                </Text>
+                <Text style={s.pillStatLabel}>walk</Text>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* Loading */}
+        {loadingRoute && (
+          <View style={s.loadingPill}>
+            <ActivityIndicator size="small" color={PURPLE_L} />
+            <Text style={s.loadingText}>Calculating route…</Text>
+          </View>
+        )}
+
+        {/* Re-centre */}
+        <TouchableOpacity
+          style={s.locateBtn}
+          onPress={() => sendToMap({ type: 'CENTER_USER' })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.8}
+        >
+          <Locate size={17} color={TEXT_PRI} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Bottom Sheet ── */}
+      <Animated.View style={[s.sheet, { height: sheetAnim }]}>
+
+        {/* Sheet header */}
+        <TouchableOpacity style={s.sheetHeader} onPress={toggleSheet} activeOpacity={0.9}>
+          <View style={s.handle} />
+
+          <View style={s.sheetTitleRow}>
+            <View style={s.sheetTitleLeft}>
+              {destination ? (
+                <>
+                  <Text style={s.sheetOverline}>Navigating to</Text>
+                  <Text style={[s.sheetDestName, { color: accentColor }]} numberOfLines={1}>
+                    {destination.shortName}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.sheetOverline}>Where to?</Text>
+                  <Text style={s.sheetDestName}>Choose a destination</Text>
+                </>
+              )}
+            </View>
+
+            <View style={s.sheetActions}>
+              {destination && (
+                <TouchableOpacity
+                  style={s.iconBtn}
+                  onPress={handleClearRoute}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <X size={14} color={TEXT_SEC} strokeWidth={2.5} />
+                </TouchableOpacity>
+              )}
+              <View style={s.iconBtn}>
+                {sheetExpanded
+                  ? <ChevronDown size={16} color={TEXT_SEC} strokeWidth={2} />
+                  : <ChevronUp   size={16} color={TEXT_SEC} strokeWidth={2} />
+                }
+              </View>
+            </View>
+          </View>
+
+          {/* Destination category strip */}
+          {destination && (
+            <View style={[s.categoryStrip, { backgroundColor: accentColor + '14', borderColor: accentColor + '30' }]}>
+              <View style={[s.categoryDot, { backgroundColor: accentColor }]} />
+              <Text style={[s.categoryStripTxt, { color: accentColor }]}>
+                {CATEGORY_LABELS[destination.category] || destination.category}
+              </Text>
+              <Text style={s.categoryStripDesc} numberOfLines={1}>{destination.description}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Location list */}
+        <FlatList
+          data={CAMP_LOCATIONS}
+          renderItem={renderLocation}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.locList}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: BG },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    backgroundColor: BG,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 11,
+    backgroundColor: SURF,
+    borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  headerTitle: {
+    fontSize: 15, fontWeight: '800',
+    color: TEXT_PRI, letterSpacing: 0.2,
+  },
+  headerSub: {
+    fontSize: 10.5, color: TEXT_MUT,
+    fontWeight: '500', marginTop: 2, letterSpacing: 0.2,
+  },
+
+  // Map
+  mapContainer: { flex: 1, position: 'relative' },
+  map: { flex: 1, backgroundColor: BG },
+
+  errorState: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    padding: 36, gap: 14,
+  },
+  errorIconWrap: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: SURF, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  errorTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRI },
+  errorBody: { fontSize: 13, color: TEXT_SEC, textAlign: 'center', lineHeight: 20 },
+
+  // Route info pill
+  infoPill: {
+    position: 'absolute', top: 14,
+    alignSelf: 'center', left: '50%',
+    transform: [{ translateX: -90 }],
+    width: 180,
+    borderRadius: 16, borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
+  },
+  infoPillGrad: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 10, gap: 12,
+  },
+  pillStat: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center',
+  },
+  pillStatVal: { fontSize: 13, fontWeight: '800' },
+  pillStatLabel: { fontSize: 10, color: TEXT_MUT, fontWeight: '500' },
+  pillDivider: { width: 1, height: 20, backgroundColor: BORDER },
+
+  // Loading pill
+  loadingPill: {
+    position: 'absolute', top: 14,
+    alignSelf: 'center', left: '50%',
+    transform: [{ translateX: -75 }],
+    width: 150,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: SURF_HI,
+    borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 14, paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
+  },
+  loadingText: { fontSize: 12, color: TEXT_SEC, fontWeight: '600' },
+
+  // Locate button
+  locateBtn: {
+    position: 'absolute', bottom: 18, right: 16,
+    width: 42, height: 42, borderRadius: 13,
+    backgroundColor: SURF_HI,
+    borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
+  },
+
+  // Sheet
+  sheet: {
+    backgroundColor: SURF_HI,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderTopWidth: 1, borderColor: BORDER,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.4, shadowRadius: 20,
+    elevation: 20, overflow: 'hidden',
+  },
+  sheetHeader: {
+    paddingTop: 10, paddingHorizontal: 18, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: TEXT_MUT, alignSelf: 'center', marginBottom: 14,
+  },
+  sheetTitleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  sheetTitleLeft: { flex: 1 },
+  sheetOverline: {
+    fontSize: 9.5, fontWeight: '700', color: TEXT_MUT,
+    textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 3,
+  },
+  sheetDestName: {
+    fontSize: 17, fontWeight: '800', color: TEXT_PRI, letterSpacing: -0.3,
+  },
+  sheetActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBtn: {
+    width: 30, height: 30, borderRadius: 10,
+    backgroundColor: SURF, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Category strip
+  categoryStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: 10, borderWidth: 1,
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  categoryDot: { width: 6, height: 6, borderRadius: 3 },
+  categoryStripTxt: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  categoryStripDesc: { fontSize: 11, color: TEXT_SEC, flex: 1 },
+
+  // Location list
+  locList: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 },
+  locItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 11, paddingHorizontal: 12,
+    borderRadius: 14, borderWidth: 1, borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    gap: 11, position: 'relative', overflow: 'hidden',
+  },
+  locIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+  },
+  locEmoji: { fontSize: 18 },
+  locText: { flex: 1 },
+  locName: { fontSize: 13, fontWeight: '700', color: TEXT_PRI, letterSpacing: -0.2 },
+  locDesc: { fontSize: 11, color: TEXT_SEC, marginTop: 2 },
+
+  catTag: {
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1,
+  },
+  catTagTxt: { fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  activeBar: {
+    position: 'absolute', left: 0, top: 8, bottom: 8,
+    width: 3, borderRadius: 2,
+  },
+});

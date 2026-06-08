@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MoreScreen              from '../features/more/MoreScreen';
 import EmergencyScreen         from '../features/emergency/EmergencyScreen';
 import AIAssistantScreen       from '../features/ai-assistant/AIAssistantScreen';
-import BusinessDirectoryScreen from '../features/business/BusinessDirectoryScreen';
+import BusinessDirectoryScreen from '../features/business/screens/BusinessDirectoryScreen';
 import FunFactsScreen          from '../features/fun-facts/FunFactsScreen';
 import ContactsScreen          from '../features/contacts/ContactsScreen';
 import QuizScreen              from '../features/quiz/QuizScreen';

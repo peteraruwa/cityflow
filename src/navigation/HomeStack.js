@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import HomeScreen from "../features/home/HomeScreen";
 import EmergencyScreen from "../features/emergency/EmergencyScreen";
 import AIAssistantScreen from "../features/ai-assistant/AIAssistantScreen";
-import BusinessDirectoryScreen from "../features/business/BusinessDirectoryScreen";
+import BusinessDirectoryScreen from "../features/business/screens/BusinessDirectoryScreen";
 import FunFactsScreen from "../features/fun-facts/FunFactsScreen";
 import ContactsScreen from "../features/contacts/ContactsScreen";
 import QuizScreen from "../features/quiz/QuizScreen";
@@ -12,6 +12,10 @@ import SearchScreen from "../features/search/SearchScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import EventsScreen from '../features/events/EventsScreen';
 import EventDetailScreen from '../features/events/EventDetailScreen';
+import FindAChurchScreen from '../features/find-a-church/FindAChurchScreen';
+import PictureGalleryScreen from '../features/picture-day/screens/PictureGalleryScreen';
+import PictureDetailScreen from '../features/picture-day/screens/PictureDetailScreen';
+import NavigationScreen from '../features/navigation/screens/NavigationScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -39,6 +43,10 @@ export default function HomeStack() {
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Events" component={EventsScreen} />
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+      <Stack.Screen name="FindAChurch" component={FindAChurchScreen} />
+      <Stack.Screen name="PictureGallery" component={PictureGalleryScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PictureDetail" component={PictureDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Navigation" component={NavigationScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }
