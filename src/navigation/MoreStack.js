@@ -18,6 +18,7 @@ import ProfileScreen           from '../features/profile/ProfileScreen';
 import NotificationsScreen     from '../features/notifications/NotificationsScreen';
 import NewsDetailScreen        from '../features/notifications/NewsDetailScreen';
 import EventDetailScreen       from '../features/events/EventDetailScreen';
+import AdminDashboardScreen    from '../features/admin/AdminDashboardScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -39,6 +40,7 @@ export default function MoreStack({ onLogout, onResetApp }) {
       <Stack.Screen name="Notifications"     component={NotificationsScreen} />
       <Stack.Screen name="NewsDetail"        component={NewsDetailScreen} />
       <Stack.Screen name="EventDetail"       component={EventDetailScreen} />
+      <Stack.Screen name="AdminDashboard"    component={AdminDashboardScreen} />
       <Stack.Screen name="Privacy"           component={PrivacyScreen} />
       <Stack.Screen name="AboutCityFlow"      component={AboutCityFlowScreen} />
       <Stack.Screen name="AboutRCCG"          component={AboutRCCGScreen} />

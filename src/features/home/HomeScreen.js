@@ -58,6 +58,9 @@ import { translateText } from "../../shared/i18n/runtimeTranslator";
 import { allQuotes } from "../../shared/data/quotes";
 import { GALLERY } from "../picture-day/data/gallery";
 import { NEWS_ITEMS } from "../notifications/notificationData";
+import NewsFeed from './components/NewsFeed';
+// Import the real WeatherWidget component
+import WeatherWidget from '../../features/weather-widget/WeatherWidget';
 
 const TICKER_ITEMS = [
   "Sunday Victory Service - live now at the Main Auditorium",
@@ -99,35 +102,11 @@ const OPEN_HEAVENS_LINKS = {
 const ACTIONS = [
   { Icon: Navigation, label: "Navigate", sub: "Live city map", color: "#7128CE", route: "Navigation" },
   { Icon: Car, label: "CityRide", sub: "Book a ride", color: "#C48D38", tab: "CityRide" },
-  { Icon: Building2, label: "Stay", sub: "Guest houses", color: "#2A7FAB", tab: "Explore" },
+  { Icon: Building2, label: "Stay", sub: "Guest houses", color: "#2A7FAB", route: "Stay" },
   { Icon: CalendarDays, label: "Events", sub: "What's on today", color: "#4A8A5A", route: "Events" },
 ];
 
-const WEATHER = {
-  city: "Redemption City",
-  temp: 29,
-  feels: 32,
-  conditionMain: "Clear",
-  condition: "Sunny",
-  desc: "Sunny - clear skies",
-  humidity: "64%",
-  wind: "12 km/h",
-  visibility: "10 km",
-  hourly: [
-    { t: "Now", temp: 29, main: "Clear" },
-    { t: "1PM", temp: 31, main: "Clear" },
-    { t: "2PM", temp: 31, main: "Clouds" },
-    { t: "3PM", temp: 30, main: "Clouds" },
-    { t: "4PM", temp: 28, main: "Rain" },
-    { t: "5PM", temp: 27, main: "Rain" },
-  ],
-  days: [
-    { d: "Tomorrow", main: "Clouds", hi: 30, lo: 22 },
-    { d: "Thursday", main: "Rain", hi: 27, lo: 21 },
-    { d: "Friday", main: "Thunderstorm", hi: 26, lo: 21 },
-    { d: "Saturday", main: "Clear", hi: 31, lo: 23 },
-  ],
-};
+
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -182,7 +161,8 @@ export default function HomeScreen() {
             <Text style={s.greetingUser}>{tr(firstName)} {"\uD83D\uDC4B"}</Text>
             <Text style={s.greetingSub}>{tr("Welcome to Redemption City of God")}</Text>
           </View>
-          <WeatherWidget tr={tr} onOpen={() => setShowWeather(true)} />
+          {/* Updated to use the real WeatherWidget component */}
+          <WeatherWidget />
         </View>
 
         <QuoteOfTheDay tr={tr} />
@@ -213,7 +193,11 @@ export default function HomeScreen() {
 
         <EventsPreview tr={tr} onSeeAll={() => goRoute("Events")} onEventPress={(eventId) => goRoute("EventDetail", { eventId })} />
 
-        <Announcements tr={tr} onNews={(notificationId) => goRoute("NewsDetail", { notificationId })} />
+        <NewsFeed
+          tr={tr}
+          onLostFoundPress={() => navigation.getParent()?.navigate("LostFound")}
+          onNewsPress={(newsItem) => goRoute("NewsDetail", { newsId: newsItem.id })}
+        />
 
         <CityTourCard tr={tr} onPress={() => goRoute("CityTour")} />
 
@@ -234,18 +218,21 @@ export default function HomeScreen() {
         <View style={{ height: 8 }} />
       </ScrollView>
 
-      <WeatherModal tr={tr} visible={showWeather} onClose={() => setShowWeather(false)} />
+      {/* WeatherModal is no longer needed since WeatherWidget has its own modal */}
+      {/* Keep the OpenHeavensModal */}
       <OpenHeavensModal tr={tr} visible={showDevotional} onClose={() => setShowDevotional(false)} />
     </View>
   );
 }
+
+// ... rest of the helper functions remain the same ...
 
 async function openExternalUrl(url, fallbackUrl = OPEN_HEAVENS_LINKS.website) {
   try {
     await Linking.openURL(url);
   } catch (error) {
     if (fallbackUrl && fallbackUrl !== url) {
-      await Linking.openURL(fallbackUrl).catch(() => {});
+      await Linking.openURL(fallbackUrl).catch(() => { });
     }
   }
 }
@@ -318,36 +305,8 @@ function NewsTicker({ tr, active, onTap }) {
   );
 }
 
-function WeatherWidget({ tr, onOpen }) {
-  return (
-    <TouchableOpacity onPress={onOpen} style={s.weatherChip} activeOpacity={0.85}>
-      <WeatherIcon main={WEATHER.conditionMain} size={28} />
-      <View>
-        <Text style={s.weatherTemp}>{WEATHER.temp}°</Text>
-        <Text style={s.weatherCondition}>{tr(WEATHER.condition)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function WeatherIcon({ main, size = 34, color }) {
-  const props = { size, strokeWidth: 1.8 };
-  switch ((main || "").toLowerCase()) {
-    case "clear":
-      return <Sun {...props} color={color || C.gold} />;
-    case "rain":
-    case "drizzle":
-      return <CloudRain {...props} color={color || "#6B9BC0"} />;
-    case "thunderstorm":
-      return <CloudRain {...props} color={color || "#7B6BC0"} />;
-    case "snow":
-      return <Cloud {...props} color={color || "#B0D0E8"} />;
-    case "clouds":
-      return <Cloud {...props} color={color || "#B0A8C0"} />;
-    default:
-      return <Sun {...props} color={color || C.gold} />;
-  }
-}
+// REMOVED the old WeatherWidget and WeatherIcon functions since they're now imported
+// Also REMOVED the WeatherModal component since it's now part of the WeatherWidget
 
 function QuoteOfTheDay({ tr }) {
   const now = new Date();
@@ -461,36 +420,6 @@ function EventsPreview({ tr, onSeeAll, onEventPress }) {
           </TouchableOpacity>
         ))}
       </ScrollView>
-    </View>
-  );
-}
-
-function Announcements({ tr, onLost }) {
-  const items = [
-    { Icon: Radio, color: "#7128CE", title: "Monthly Thanksgiving Service", body: "Join us Saturday at 6PM for a special celebration of praise and worship.", time: "2h ago" },
-    { Icon: AlertCircle, color: "#D44F4F", title: "Lost: Black Wallet - Gate B", body: "A black leather wallet was found at Gate B. Contact security desk to claim.", time: "4h ago", onPress: onLost },
-    { Icon: Navigation, color: "#C48D38", title: "Camp Road Closure", body: "Main Camp Road closed 10AM-2PM for event. Please use Alternative Route 2.", time: "1h ago" },
-  ];
-  return (
-    <View style={s.section}>
-      <SectionHeader tr={tr} title="News & Announcements" action={null} />
-      <View style={s.newsList}>
-        {items.map(({ Icon, color, title, body, time, onPress }) => (
-          <TouchableOpacity key={title} onPress={onPress} disabled={!onPress} style={s.newsCard} activeOpacity={0.85}>
-            <View style={[s.newsIcon, { backgroundColor: `${color}18`, borderColor: `${color}28` }]}>
-              <Icon size={15} color={color} strokeWidth={2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={s.newsTop}>
-                <Text style={s.newsTitle} numberOfLines={1}>{tr(title)}</Text>
-                <Text style={s.newsTime}>{time}</Text>
-              </View>
-              <Text style={s.newsBody}>{tr(body)}</Text>
-              {onPress && <Text style={s.newsLink}>{tr("View in Lost & Found")} →</Text>}
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
     </View>
   );
 }
@@ -780,80 +709,6 @@ function OpenHeavensModal({ tr, visible, onClose }) {
   );
 }
 
-function WeatherModal({ tr, visible, onClose }) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.modalOverlay} onPress={onClose} />
-      <View style={s.sheet}>
-        <View style={s.sheetHandle} />
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={s.weatherModalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.sheetTitle}>{tr("Weather")}</Text>
-              <View style={s.weatherLocationRow}>
-                <MapPin size={9} color={C.gold} strokeWidth={2.5} />
-                <Text style={s.weatherUpdated}>{tr(WEATHER.city)} · {tr("Updated just now")}</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <X size={15} color={C.ts} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-
-          <LinearGradient colors={["rgba(196,141,56,0.12)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.weatherCurrent}>
-            <WeatherIcon main={WEATHER.conditionMain} size={46} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.weatherBigTemp}>{WEATHER.temp}°</Text>
-              <Text style={s.weatherDesc}>{tr(WEATHER.desc)}</Text>
-            </View>
-            <View style={s.weatherFeels}>
-              <Thermometer size={11} color={C.gold} strokeWidth={2} />
-              <Text style={s.weatherFeelsText}>{tr("Feels")} {WEATHER.feels}°</Text>
-            </View>
-          </LinearGradient>
-
-          <View style={s.weatherStats}>
-            {[
-              [Droplets, "Humidity", WEATHER.humidity],
-              [Wind, "Wind", WEATHER.wind],
-              [Eye, "Visibility", WEATHER.visibility],
-            ].map(([Icon, label, value]) => (
-              <View key={label} style={s.weatherStat}>
-                <Icon size={14} color={C.ts} strokeWidth={1.8} />
-                <Text style={s.weatherStatValue}>{value}</Text>
-                <Text style={s.weatherStatLabel}>{tr(label)}</Text>
-              </View>
-            ))}
-          </View>
-
-          <Text style={s.weatherSectionLabel}>{tr("Today")}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.weatherHourly}>
-            {WEATHER.hourly.map((hour, index) => (
-              <View key={`${hour.t}-${index}`} style={[s.weatherHour, index === 0 && s.weatherHourActive]}>
-                <Text style={[s.weatherHourTime, index === 0 && s.weatherHourTimeActive]}>{tr(hour.t)}</Text>
-                <WeatherIcon main={hour.main} size={17} />
-                <Text style={s.weatherHourTemp}>{hour.temp}°</Text>
-              </View>
-            ))}
-          </ScrollView>
-
-          <Text style={s.weatherSectionLabel}>{tr("Next 4 Days")}</Text>
-          <View style={s.weatherDays}>
-            {WEATHER.days.map((day) => (
-              <View key={day.d} style={s.weatherDay}>
-                <Text style={s.weatherDayName}>{tr(day.d)}</Text>
-                <WeatherIcon main={day.main} size={16} />
-                <Text style={s.weatherDayHi}>{day.hi}°</Text>
-                <Text style={s.weatherDayLo}>{day.lo}°</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
-    </Modal>
-  );
-}
-
 function PulsingDot({ size = 6, color = "#F06565", style }) {
   const opacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -896,9 +751,8 @@ const s = StyleSheet.create({
   greetingName: { fontSize: 14, fontWeight: "500", color: C.ts },
   greetingUser: { fontSize: 24, fontWeight: "800", color: C.tp, lineHeight: 29 },
   greetingSub: { fontSize: 11.5, color: C.tm, marginTop: 4 },
-  weatherChip: { flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 22, paddingHorizontal: 13, paddingVertical: 7 },
-  weatherTemp: { fontSize: 16, fontWeight: "700", color: C.tp, lineHeight: 17 },
-  weatherCondition: { fontSize: 10, color: C.ts, marginTop: 2 },
+
+  // Removed weatherChip, weatherTemp, weatherCondition styles since they're now handled by the imported widget
 
   quoteWrap: { paddingHorizontal: 18, marginBottom: 22 },
   quoteCard: { borderRadius: 22, borderWidth: 1, borderColor: "rgba(196,141,56,0.22)", padding: 18, overflow: "hidden" },

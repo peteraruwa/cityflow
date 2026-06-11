@@ -6,25 +6,31 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  MapPin, Bell, Package, BookOpen, HelpCircle,
-  Settings, LogOut, ChevronRight, Trophy,
+  MapPin, Package, BookOpen, LogOut, ChevronRight, Trophy,
 } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
 import ScreenHeader from '../../shared/components/ScreenHeader';
+import { useUserProfile } from '../../shared/context/UserContext';
 import { QUIZ_BADGE_KEY, QUIZ_POINTS_KEY } from '../quiz/QuizScreen';
 
 const MENU = [
-  { Icon:Bell,       label:'Notifications',   sub:'Manage your alerts',      color:'#7128CE', route:'Notifications' },
-  { Icon:Package,    label:'My L&F Reports',  sub:'Track your submissions',  color:'#C48D38', tab:'LostFound' },
+  { Icon:Package,    label:'My Lost & Found Reports',  sub:'Track your submissions',  color:'#C48D38', tab:'LostFound' },
   { Icon:BookOpen,   label:'Booking History', sub:'Past stays & events',     color:'#2A7FAB' },
-  { Icon:HelpCircle, label:'Help & Support',  sub:'FAQs and contact',        color:'#4A8A5A' },
-  { Icon:Settings,   label:'Settings',        sub:'App preferences',         color:'#6A6880', route:'MoreSettings' },
 ];
 
 export default function ProfileScreen({ navigation, route }) {
   const onLogout = route?.params?.onLogout;
+  const { user } = useUserProfile();
   const [quizPoints, setQuizPoints] = useState(0);
   const [quizBadge, setQuizBadge] = useState(null);
+  const displayName = user?.displayName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email?.split('@')[0] || 'Guest';
+  const displayEmail = user?.email || 'No email on file';
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'CF';
 
   useFocusEffect(
     useCallback(() => {
@@ -66,17 +72,17 @@ export default function ProfileScreen({ navigation, route }) {
         {/* Avatar */}
         <View style={s.avatarBlock}>
           <LinearGradient colors={[C.purple, '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatar}>
-            <Text style={s.avatarTxt}>PA</Text>
+            <Text style={s.avatarTxt}>{initials}</Text>
           </LinearGradient>
-          <Text style={s.name}>Peter Adeyemi</Text>
-          <Text style={s.email}>peter.adeyemi@example.com</Text>
+          <Text style={s.name}>{displayName}</Text>
+          <Text style={s.email}>{displayEmail}</Text>
           <View style={s.locRow}>
             <MapPin size={10} color={C.gold} strokeWidth={2.5}/>
             <Text style={s.locTxt}> Redemption City</Text>
           </View>
         </View>
 
-        <View style={s.quizBadgeCard}>
+        <TouchableOpacity style={s.quizBadgeCard} onPress={() => navigation.navigate('Quiz')} activeOpacity={0.84}>
           <LinearGradient
             colors={['rgba(196,141,56,0.18)', 'rgba(10,2,24,0.98)']}
             start={{ x: 0, y: 0 }}
@@ -98,11 +104,11 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={s.quizPointsText}>pts</Text>
             </View>
           </LinearGradient>
-        </View>
+        </TouchableOpacity>
 
         {/* Stats */}
         <View style={s.stats}>
-          {[['14','CityRides'],['8','Events'],['2','L&F Reports']].map(([val,lbl],i) => (
+          {[['14','CityRides'],['8','Events'],['2','Lost & Found Reports']].map(([val,lbl],i) => (
             <View key={i} style={[s.statItem, i<2 && s.statDivider]}>
               <Text style={s.statVal}>{val}</Text>
               <Text style={s.statLbl}>{lbl}</Text>

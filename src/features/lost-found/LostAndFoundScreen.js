@@ -4,31 +4,94 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   Package, MapPin, Clock, Phone, Shield, ChevronDown, ChevronUp,
-  Tag, Send, CheckCircle, User,
+  Tag, Send, CheckCircle, User, ChevronLeft,
 } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
-import { FOUND_ITEMS, CATS_LOST, LOCATIONS } from '../../shared/data';
+import { FOUND_ITEMS, CATS_LOST } from '../../shared/data';
+import { auth, db } from '../../shared/config/firebase';
+import { useUserProfile } from '../../shared/context/UserContext';
+import { CAMP_LOCATIONS } from '../navigation/data/locations';
 
 const PEND_COLOR = '#C48D38';
 const CLMD_COLOR = '#3DAA6A';
 
+const LOCATION_SUGGESTIONS = CAMP_LOCATIONS
+  .map((location) => location.shortName || location.name)
+  .filter(Boolean);
+const QUICK_LOCATIONS = LOCATION_SUGGESTIONS.slice(0, 10);
+const EMPTY_FORM = {
+  itemName: '',
+  category: '',
+  description: '',
+  dateLost: '',
+  timeLost: '',
+  locationLost: '',
+  ownerName: '',
+  ownerPhone: '',
+  ownerEmail: '',
+};
+
 export default function LostAndFoundScreen() {
+  const navigation = useNavigation();
+  const { user } = useUserProfile();
   const [subTab,     setSubTab]     = useState('found');
   const [expandedId, setExpandedId] = useState(null);
   const [submitted,  setSubmitted]  = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    itemName:'', category:'', description:'', dateLost:'', locationLost:'', ownerName:'', ownerPhone:'', ownerEmail:''
-  });
+  const [submitError, setSubmitError] = useState('');
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  function upd(field, val) { setForm(f => ({ ...f, [field]:val })); }
+  function upd(field, val) {
+    setSubmitError('');
+    setForm(f => ({ ...f, [field]:val }));
+  }
 
-  function handleSubmit() {
+  const locationQuery = form.locationLost.trim().toLowerCase();
+  const matchingLocations = locationQuery.length < 2
+    ? []
+    : CAMP_LOCATIONS
+        .filter((location) => [location.name, location.shortName, location.description, location.category, location.subcategory, location.address]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(locationQuery)))
+        .slice(0, 6);
+
+  async function handleSubmit() {
     if (!form.itemName.trim() || !form.ownerName.trim() || !form.ownerPhone.trim()) return;
     setSubmitting(true);
-    setTimeout(() => { setSubmitting(false); setSubmitted(true); }, 1400);
+    setSubmitError('');
+
+    const firebaseUser = auth?.currentUser;
+    const ownerEmail = form.ownerEmail.trim() || user?.email || firebaseUser?.email || '';
+    const profileName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+
+    try {
+      await addDoc(collection(db, 'lostAndFoundReports'), {
+        itemName: form.itemName.trim(),
+        category: (form.category || 'other').trim(),
+        description: form.description.trim(),
+        dateLost: form.dateLost.trim(),
+        timeLost: form.timeLost.trim(),
+        location: form.locationLost.trim(),
+        fullName: form.ownerName.trim(),
+        phoneNumber: form.ownerPhone.trim(),
+        email: ownerEmail,
+        userId: firebaseUser?.uid || user?.uid || ownerEmail || 'anonymous',
+        userName: profileName || user?.displayName || form.ownerName.trim(),
+        status: 'pending',
+        type: 'lost',
+        createdAt: serverTimestamp(),
+      });
+      setSubmitted(true);
+    } catch (err) {
+      console.warn('Lost and found report failed:', err?.code || err?.message);
+      setSubmitError('We could not submit the report right now. Please check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const inputStyle = {
@@ -39,12 +102,15 @@ export default function LostAndFoundScreen() {
 
   return (
     <View style={s.root}>
-      {/* Header */}
+      {/* Header with Back Button */}
       <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} activeOpacity={0.75}>
+          <ChevronLeft size={22} color={C.tp} strokeWidth={2.5} />
+        </TouchableOpacity>
         <View style={s.headerIcon}>
           <Package size={16} color="#9458E0" strokeWidth={1.8}/>
         </View>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Lost &amp; Found</Text>
           <Text style={s.headerSub}>Report or locate missing items</Text>
         </View>
@@ -147,7 +213,7 @@ export default function LostAndFoundScreen() {
               <Text style={s.successTitle}>Report Submitted</Text>
               <Text style={s.successBody}>Your lost item report has been received.{'\n'}Security will review it within 24 hours.</Text>
               <Text style={s.successRef}>Reference: <Text style={{color:C.gold,fontWeight:'600'}}>LF-2024-{Math.floor(4044+Math.random()*100)}</Text></Text>
-              <TouchableOpacity style={s.reportAnotherBtn} onPress={()=>{ setSubmitted(false); setForm({itemName:'',category:'',description:'',dateLost:'',locationLost:'',ownerName:'',ownerPhone:'',ownerEmail:''}); }}>
+              <TouchableOpacity style={s.reportAnotherBtn} onPress={()=>{ setSubmitted(false); setSubmitError(''); setForm(EMPTY_FORM); }}>
                 <Text style={s.reportAnotherTxt}>Report Another Item</Text>
               </TouchableOpacity>
             </View>
@@ -178,16 +244,45 @@ export default function LostAndFoundScreen() {
                   <Clock size={14} color={C.gold} strokeWidth={1.8}/>
                   <Text style={s.formSectionTitleTxt}> When &amp; Where</Text>
                 </View>
-                <Text style={s.label}>DATE &amp; TIME LOST</Text>
-                <TextInput style={inputStyle} value={form.dateLost} onChangeText={v=>upd('dateLost',v)} placeholder="e.g. Dec 15, 2024 around 2:00 PM" placeholderTextColor={C.tm}/>
+                <Text style={s.label}>DATE LOST</Text>
+                <TextInput style={inputStyle} value={form.dateLost} onChangeText={v=>upd('dateLost',v)} placeholder="e.g. 2026-06-11 or Dec 15, 2024" placeholderTextColor={C.tm}/>
+                <Text style={[s.label,{marginTop:12}]}>TIME LOST</Text>
+                <TextInput style={inputStyle} value={form.timeLost} onChangeText={v=>upd('timeLost',v)} placeholder="e.g. 6:00 PM" placeholderTextColor={C.tm}/>
                 <Text style={[s.label,{marginTop:12}]}>LAST KNOWN LOCATION</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop:4}}>
-                  {LOCATIONS.map(l => (
+                <TextInput
+                  style={inputStyle}
+                  value={form.locationLost}
+                  onChangeText={v=>upd('locationLost',v)}
+                  placeholder="Type exact place, landmark, road, row, or nearby description..."
+                  placeholderTextColor={C.tm}
+                  autoCapitalize="words"
+                />
+                <Text style={s.locationHelper}>Choose a known place below, or type any location if it is not listed.</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop:8}} keyboardShouldPersistTaps="handled">
+                  {QUICK_LOCATIONS.map(l => (
                     <TouchableOpacity key={l} style={[s.catPill, form.locationLost===l&&s.catPillActive, {marginRight:6}]} onPress={()=>upd('locationLost',l)} activeOpacity={0.8}>
                       <Text style={[s.catPillTxt, form.locationLost===l&&{color:'#fff'}]}>{l}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
+                {matchingLocations.length > 0 && (
+                  <View style={s.locationMatches}>
+                    {matchingLocations.map((location) => {
+                      const label = location.shortName || location.name;
+                      return (
+                        <TouchableOpacity key={location.id} onPress={()=>upd('locationLost', label)} activeOpacity={0.78} style={s.locationMatchRow}>
+                          <View style={s.locationMatchIcon}>
+                            <Text style={s.locationMatchIconText}>{location.icon}</Text>
+                          </View>
+                          <View style={{flex:1}}>
+                            <Text style={s.locationMatchName} numberOfLines={1}>{location.name}</Text>
+                            <Text style={s.locationMatchSub} numberOfLines={1}>{location.description}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
               {/* Owner Info */}
               <View style={s.formCard}>
@@ -207,6 +302,7 @@ export default function LostAndFoundScreen() {
                 ))}
               </View>
               {/* Submit */}
+              {!!submitError && <Text style={s.submitError}>{submitError}</Text>}
               <TouchableOpacity onPress={handleSubmit} activeOpacity={0.85} style={{marginBottom:8}}>
                 <LinearGradient
                   colors={(!form.itemName||!form.ownerName||!form.ownerPhone)?['rgba(113,40,206,0.3)','rgba(113,40,206,0.3)']:['#7128CE','#5A18A8']}
@@ -227,57 +323,66 @@ export default function LostAndFoundScreen() {
 }
 
 const s = StyleSheet.create({
-  root:            { flex:1, backgroundColor:'#08011A' },
-  header:          { paddingHorizontal:22, paddingTop:18, flexDirection:'row', alignItems:'center', gap:10, marginBottom:4 },
-  headerIcon:      { width:34, height:34, borderRadius:10, backgroundColor:'rgba(113,40,206,0.15)', borderWidth:1, borderColor:'rgba(113,40,206,0.25)', alignItems:'center', justifyContent:'center' },
-  headerTitle:     { fontSize:18, fontWeight:'700', color:'#EBE3D6' },
-  headerSub:       { fontSize:11, color:'#8C7DA0' },
-  tabBar:          { flexDirection:'row', marginHorizontal:18, marginTop:14, backgroundColor:'rgba(255,255,255,0.04)', borderWidth:1, borderColor:'rgba(255,255,255,0.07)', borderRadius:14, padding:3 },
-  tabBtn:          { flex:1, paddingVertical:9, borderRadius:11, alignItems:'center' },
-  tabBtnActive:    { backgroundColor:'#7128CE' },
-  tabTxt:          { fontSize:12, fontWeight:'600', color:'#8C7DA0' },
-  tabTxtActive:    { color:'#fff' },
-  scroll:          { padding:18, paddingTop:14 },
-  custodyTxt:      { fontSize:11, color:'#8C7DA0', fontWeight:'500', marginBottom:12 },
-  itemCard:        { backgroundColor:'rgba(255,255,255,0.04)', borderWidth:1, borderColor:'rgba(255,255,255,0.07)', borderRadius:18, overflow:'hidden', marginBottom:12 },
-  itemRow:         { padding:14, paddingHorizontal:16, flexDirection:'row', gap:12, alignItems:'flex-start' },
-  itemIcon:        { width:36, height:36, borderRadius:10, backgroundColor:'rgba(113,40,206,0.12)', borderWidth:1, borderColor:'rgba(113,40,206,0.22)', alignItems:'center', justifyContent:'center' },
-  itemTopRow:      { flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:5 },
-  itemName:        { fontSize:13.5, fontWeight:'700', color:'#EBE3D6', flex:1, marginRight:8, lineHeight:18 },
-  statusBadge:     { paddingHorizontal:8, paddingVertical:3, borderRadius:20, borderWidth:1 },
-  statusPending:   { backgroundColor:'rgba(196,141,56,0.15)', borderColor:'rgba(196,141,56,0.3)' },
-  statusClaimed:   { backgroundColor:'rgba(61,170,106,0.15)', borderColor:'rgba(61,170,106,0.3)' },
-  statusTxt:       { fontSize:9, fontWeight:'700', letterSpacing:0.8, textTransform:'uppercase' },
-  itemMeta:        { fontSize:10, color:'#8C7DA0', marginBottom:4 },
-  itemLocRow:      { flexDirection:'row', alignItems:'center' },
-  itemLoc:         { fontSize:10.5, color:'#8C7DA0' },
-  itemExpanded:    { borderTopWidth:1, borderTopColor:'rgba(255,255,255,0.07)', padding:14, paddingHorizontal:16 },
-  itemDesc:        { fontSize:12, color:'#8C7DA0', lineHeight:18, marginBottom:12 },
-  itemDateRow:     { flexDirection:'row', alignItems:'center', marginBottom:12 },
-  itemDate:        { fontSize:10.5, color:'#8C7DA0' },
-  contactSecBtn:   { flexDirection:'row', alignItems:'center', justifyContent:'center', paddingVertical:11, borderRadius:12, backgroundColor:'rgba(113,40,206,0.12)', borderWidth:1, borderColor:'rgba(113,40,206,0.3)' },
-  contactSecTxt:   { fontSize:12, fontWeight:'600', color:'#9458E0' },
-  returnedTxt:     { fontSize:12, color:'#3DAA6A', fontWeight:'500', textAlign:'center', paddingVertical:8 },
-  secCard:         { marginTop:18, backgroundColor:'rgba(113,40,206,0.08)', borderWidth:1, borderColor:'rgba(113,40,206,0.2)', borderRadius:18, padding:16 },
-  secCardTop:      { flexDirection:'row', alignItems:'center', marginBottom:10 },
-  secCardTitle:    { fontSize:13, fontWeight:'700', color:'#EBE3D6' },
-  secRow:          { flexDirection:'row', alignItems:'center', marginBottom:7 },
-  secTxt:          { fontSize:11.5, color:'#8C7DA0' },
-  formCard:        { backgroundColor:'rgba(255,255,255,0.04)', borderWidth:1, borderColor:'rgba(255,255,255,0.07)', borderRadius:18, padding:16 },
-  formSectionTitle:{ flexDirection:'row', alignItems:'center', marginBottom:14 },
-  formSectionTitleTxt:{ fontSize:13, fontWeight:'700', color:'#EBE3D6' },
-  label:           { fontSize:11, fontWeight:'600', color:'#8C7DA0', letterSpacing:0.6, textTransform:'uppercase', marginBottom:7 },
-  catPills:        { flexDirection:'row', flexWrap:'wrap', gap:7 },
-  catPill:         { paddingHorizontal:12, paddingVertical:6, borderRadius:20, borderWidth:1, borderColor:'rgba(255,255,255,0.07)', backgroundColor:'rgba(255,255,255,0.04)' },
-  catPillActive:   { backgroundColor:'#7128CE', borderColor:'transparent' },
-  catPillTxt:      { fontSize:11, fontWeight:'500', color:'#8C7DA0' },
-  submitBtn:       { width:'100%', paddingVertical:14, borderRadius:15, flexDirection:'row', alignItems:'center', justifyContent:'center' },
-  submitBtnTxt:    { fontSize:14, fontWeight:'600', color:'#fff' },
-  successCard:     { backgroundColor:'rgba(61,170,106,0.08)', borderWidth:1, borderColor:'rgba(61,170,106,0.22)', borderRadius:22, padding:28, alignItems:'center' },
-  successIcon:     { width:56, height:56, borderRadius:28, backgroundColor:'rgba(61,170,106,0.15)', borderWidth:1, borderColor:'rgba(61,170,106,0.3)', alignItems:'center', justifyContent:'center', marginBottom:16 },
-  successTitle:    { fontSize:17, fontWeight:'700', color:'#EBE3D6', marginBottom:6 },
-  successBody:     { fontSize:12.5, color:'#8C7DA0', lineHeight:19, marginBottom:8, textAlign:'center' },
-  successRef:      { fontSize:11, color:'#8C7DA0', marginBottom:20 },
-  reportAnotherBtn:{ paddingHorizontal:32, paddingVertical:11, borderRadius:13, backgroundColor:'#7128CE' },
-  reportAnotherTxt:{ fontSize:13, fontWeight:'600', color:'#fff' },
+  root:            { flex: 1, backgroundColor: '#08011A' },
+  header:          { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn:         { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
+  headerIcon:      { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(113,40,206,0.15)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.25)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle:     { fontSize: 18, fontWeight: '700', color: '#EBE3D6' },
+  headerSub:       { fontSize: 11, color: '#8C7DA0' },
+  tabBar:          { flexDirection: 'row', marginHorizontal: 18, marginTop: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: 3 },
+  tabBtn:          { flex: 1, paddingVertical: 9, borderRadius: 11, alignItems: 'center' },
+  tabBtnActive:    { backgroundColor: '#7128CE' },
+  tabTxt:          { fontSize: 12, fontWeight: '600', color: '#8C7DA0' },
+  tabTxtActive:    { color: '#fff' },
+  scroll:          { padding: 18, paddingTop: 14 },
+  custodyTxt:      { fontSize: 11, color: '#8C7DA0', fontWeight: '500', marginBottom: 12 },
+  itemCard:        { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 18, overflow: 'hidden', marginBottom: 12 },
+  itemRow:         { padding: 14, paddingHorizontal: 16, flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  itemIcon:        { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(113,40,206,0.12)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.22)', alignItems: 'center', justifyContent: 'center' },
+  itemTopRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 },
+  itemName:        { fontSize: 13.5, fontWeight: '700', color: '#EBE3D6', flex: 1, marginRight: 8, lineHeight: 18 },
+  statusBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
+  statusPending:   { backgroundColor: 'rgba(196,141,56,0.15)', borderColor: 'rgba(196,141,56,0.3)' },
+  statusClaimed:   { backgroundColor: 'rgba(61,170,106,0.15)', borderColor: 'rgba(61,170,106,0.3)' },
+  statusTxt:       { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  itemMeta:        { fontSize: 10, color: '#8C7DA0', marginBottom: 4 },
+  itemLocRow:      { flexDirection: 'row', alignItems: 'center' },
+  itemLoc:         { fontSize: 10.5, color: '#8C7DA0' },
+  itemExpanded:    { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', padding: 14, paddingHorizontal: 16 },
+  itemDesc:        { fontSize: 12, color: '#8C7DA0', lineHeight: 18, marginBottom: 12 },
+  itemDateRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  itemDate:        { fontSize: 10.5, color: '#8C7DA0' },
+  contactSecBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 12, backgroundColor: 'rgba(113,40,206,0.12)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.3)' },
+  contactSecTxt:   { fontSize: 12, fontWeight: '600', color: '#9458E0' },
+  returnedTxt:     { fontSize: 12, color: '#3DAA6A', fontWeight: '500', textAlign: 'center', paddingVertical: 8 },
+  secCard:         { marginTop: 18, backgroundColor: 'rgba(113,40,206,0.08)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.2)', borderRadius: 18, padding: 16 },
+  secCardTop:      { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  secCardTitle:    { fontSize: 13, fontWeight: '700', color: '#EBE3D6' },
+  secRow:          { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
+  secTxt:          { fontSize: 11.5, color: '#8C7DA0' },
+  formCard:        { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 18, padding: 16 },
+  formSectionTitle:{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  formSectionTitleTxt:{ fontSize: 13, fontWeight: '700', color: '#EBE3D6' },
+  label:           { fontSize: 11, fontWeight: '600', color: '#8C7DA0', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 7 },
+  catPills:        { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  catPill:         { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(255,255,255,0.04)' },
+  catPillActive:   { backgroundColor: '#7128CE', borderColor: 'transparent' },
+  catPillTxt:      { fontSize: 11, fontWeight: '500', color: '#8C7DA0' },
+  locationHelper:  { fontSize: 10.5, color: '#8C7DA0', lineHeight: 15, marginTop: 7 },
+  locationMatches: { marginTop: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.035)' },
+  locationMatchRow:{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  locationMatchIcon:{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(113,40,206,0.12)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.22)' },
+  locationMatchIconText:{ fontSize: 9, color: '#EBE3D6', fontWeight: '800', letterSpacing: 0.4 },
+  locationMatchName:{ fontSize: 12, color: '#EBE3D6', fontWeight: '700' },
+  locationMatchSub:{ fontSize: 10.5, color: '#8C7DA0', marginTop: 1 },
+  submitError:     { fontSize: 12, color: '#FFB4A8', lineHeight: 17, textAlign: 'center', marginTop: -4 },
+  submitBtn:       { width: '100%', paddingVertical: 14, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  submitBtnTxt:    { fontSize: 14, fontWeight: '600', color: '#fff' },
+  successCard:     { backgroundColor: 'rgba(61,170,106,0.08)', borderWidth: 1, borderColor: 'rgba(61,170,106,0.22)', borderRadius: 22, padding: 28, alignItems: 'center' },
+  successIcon:     { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(61,170,106,0.15)', borderWidth: 1, borderColor: 'rgba(61,170,106,0.3)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  successTitle:    { fontSize: 17, fontWeight: '700', color: '#EBE3D6', marginBottom: 6 },
+  successBody:     { fontSize: 12.5, color: '#8C7DA0', lineHeight: 19, marginBottom: 8, textAlign: 'center' },
+  successRef:      { fontSize: 11, color: '#8C7DA0', marginBottom: 20 },
+  reportAnotherBtn:{ paddingHorizontal: 32, paddingVertical: 11, borderRadius: 13, backgroundColor: '#7128CE' },
+  reportAnotherTxt:{ fontSize: 13, fontWeight: '600', color: '#fff' },
 });

@@ -84,66 +84,61 @@ export default function SplashScreen({ onDone }) {
 
   return (
     <View style={styles.stage}>
-      <View style={styles.phoneShell}>
-        <View style={styles.notchWrap}>
-          <View style={styles.notch} />
+      <Animated.View style={[styles.splash, { opacity: fade }]}>
+        <View style={styles.radialGlow}>
+          <Svg width="100%" height="100%" viewBox="0 0 390 844" preserveAspectRatio="none">
+            <Defs>
+              <RadialGradient id="splashGlow" cx="50%" cy="55%" r="60%">
+                <Stop offset="0%" stopColor="rgb(100,35,200)" stopOpacity="0.26" />
+                <Stop offset="70%" stopColor="rgb(100,35,200)" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="390" height="844" fill="url(#splashGlow)" />
+          </Svg>
         </View>
-        <Animated.View style={[styles.splash, { opacity: fade }]}>
-          <View style={styles.radialGlow}>
-            <Svg width="100%" height="100%" viewBox="0 0 390 776" preserveAspectRatio="none">
-              <Defs>
-                <RadialGradient id="splashGlow" cx="50%" cy="55%" r="60%">
-                  <Stop offset="0%" stopColor="rgb(100,35,200)" stopOpacity="0.26" />
-                  <Stop offset="70%" stopColor="rgb(100,35,200)" stopOpacity="0" />
-                </RadialGradient>
-              </Defs>
-              <Rect x="0" y="0" width="390" height="776" fill="url(#splashGlow)" />
-            </Svg>
-          </View>
-          <Animated.View style={[styles.rule, { marginBottom: 22, opacity: heldOpacity }]}>
-            <GoldRule />
-          </Animated.View>
-          <Animated.View style={[styles.brandBlock, { transform: [{ scale }] }]}>
-            <Image
-              source={require('../../../assets/rcog_logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={styles.brand}>CityFlow</Text>
-            <View style={styles.brandRule}>
-              <BrandGoldRule />
-            </View>
-            <Animated.Text style={[styles.tagline, { opacity: heldOpacity }]}>Redemption City</Animated.Text>
-          </Animated.View>
-          <Animated.View style={[styles.rule, { marginTop: 22, opacity: heldOpacity }]}>
-            <GoldRule />
-          </Animated.View>
-          <Animated.View style={[styles.dots, { opacity: heldOpacity }]}>
-            {dots.map((dot, i) => (
-              <Animated.View
-                key={i}
-                style={[
-                  styles.dot,
-                  {
-                    opacity: dot.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.2, 1],
-                    }),
-                    transform: [
-                      {
-                        scale: dot.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.8, 1.15],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-            ))}
-          </Animated.View>
+        <Animated.View style={[styles.rule, { marginBottom: 22, opacity: heldOpacity }]}>
+          <GoldRule />
         </Animated.View>
-      </View>
+        <Animated.View style={[styles.brandBlock, { transform: [{ scale }] }]}>
+          <Image
+            source={require('../../../assets/rcog_logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.brand}>CityFlow</Text>
+          <View style={styles.brandRule}>
+            <BrandGoldRule />
+          </View>
+          <Animated.Text style={[styles.tagline, { opacity: heldOpacity }]}>Redemption City</Animated.Text>
+        </Animated.View>
+        <Animated.View style={[styles.rule, { marginTop: 22, opacity: heldOpacity }]}>
+          <GoldRule />
+        </Animated.View>
+        <Animated.View style={[styles.dots, { opacity: heldOpacity }]}>
+          {dots.map((dot, i) => (
+            <Animated.View
+              key={i}
+              style={[
+                styles.dot,
+                {
+                  opacity: dot.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.2, 1],
+                  }),
+                  transform: [
+                    {
+                      scale: dot.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1.15],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+          ))}
+        </Animated.View>
+      </Animated.View>
     </View>
   );
 }
@@ -181,40 +176,13 @@ function BrandGoldRule() {
 const styles = StyleSheet.create({
   stage: {
     flex: 1,
-    backgroundColor: '#07010F',
+    backgroundColor: C.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 32,
-  },
-  phoneShell: {
-    width: 390,
-    height: 844,
-    maxWidth: '100%',
-    backgroundColor: C.bg,
-    borderRadius: 50,
-    overflow: 'hidden',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOpacity: 0.95,
-    shadowRadius: 80,
-    shadowOffset: { width: 0, height: 80 },
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  notchWrap: {
-    alignItems: 'center',
-    paddingTop: 14,
-    flexShrink: 0,
-  },
-  notch: {
-    width: 126,
-    height: 34,
-    backgroundColor: '#000',
-    borderRadius: 20,
   },
   splash: {
     flex: 1,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',

@@ -12,6 +12,7 @@ import MainTabs from './src/navigation/MainTabs';
 import { PrefsProvider } from './src/shared/context/PrefsContext';
 import { UserProvider, useUserProfile } from './src/shared/context/UserContext';
 import { installGlobalTextTranslator } from './src/shared/i18n/runtimeTranslator';
+import ScreenWrapper from './src/shared/components/ScreenWrapper';
 
 SplashScreenNative.preventAutoHideAsync();
 SplashScreenNative.setOptions({ duration: 700, fade: true });
@@ -56,18 +57,26 @@ function AppContent() {
     <View style={{ flex: 1, backgroundColor: '#08011A' }} onLayout={onLayoutRootView}>
       <StatusBar style="light" backgroundColor="#08011A" />
       {screen === 'splash' && (
-        <SplashScreen onDone={handleSplashDone} />
+        <ScreenWrapper>
+          <SplashScreen onDone={handleSplashDone} />
+        </ScreenWrapper>
       )}
       {screen === 'onboarding' && (
-        <OnboardingScreen onDone={handleOnboardingDone} />
+        <ScreenWrapper>
+          <OnboardingScreen onDone={handleOnboardingDone} />
+        </ScreenWrapper>
       )}
       {screen === 'login' && (
-        <LoginScreen onLogin={handleLogin} />
+        <ScreenWrapper>
+          <LoginScreen onLogin={handleLogin} />
+        </ScreenWrapper>
       )}
       {screen === 'app' && (
-        <NavigationContainer>
-          <MainTabs onLogout={handleLogout} onResetApp={handleResetToOnboarding} />
-        </NavigationContainer>
+        <ScreenWrapper>
+          <NavigationContainer>
+            <MainTabs onLogout={handleLogout} onResetApp={handleResetToOnboarding} />
+          </NavigationContainer>
+        </ScreenWrapper>
       )}
     </View>
   );

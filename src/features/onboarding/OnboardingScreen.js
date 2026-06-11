@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, Car, Check, Navigation, Zap } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePrefs } from '../../shared/context/PrefsContext';
 import { C, FONTS } from '../../shared/constants/theme';
 
@@ -61,10 +62,12 @@ const VISUALS = [
 
 export default function OnboardingScreen({ onDone }) {
   const { language, setLanguage } = usePrefs();
+  const insets = useSafeAreaInsets();
   const hasPickedLanguage = useRef(false);
   const [lang, setLang] = useState('en');
   const [step, setStep] = useState(0);
   const t = COPY[lang] || COPY.en;
+  const footerStyle = [styles.footer, { paddingBottom: Math.max(64, insets.bottom + 30) }];
 
   useEffect(() => {
     if (!hasPickedLanguage.current && language !== 'en') {
@@ -122,7 +125,7 @@ export default function OnboardingScreen({ onDone }) {
               })}
             </View>
           </View>
-          <View style={styles.footer}>
+          <View style={footerStyle}>
             <GradientButton label={t.continueBtn} onPress={() => setStep(1)} />
           </View>
         </View>
@@ -144,7 +147,7 @@ export default function OnboardingScreen({ onDone }) {
             <Text style={styles.slideTitle}>{t.slides[step - 1].title}</Text>
             <Text style={styles.slideBody}>{t.slides[step - 1].body}</Text>
           </View>
-          <View style={styles.footer}>
+          <View style={footerStyle}>
             <View style={styles.dots}>
               {[1, 2, 3].map((i) => (
                 <TouchableOpacity key={i} onPress={() => setStep(i)} style={[styles.dot, i === step && styles.dotActive]} />
@@ -184,7 +187,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     position: 'relative',
   },
-  footer: { paddingBottom: 34 },
+  footer: { paddingBottom: 64 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   logoWrap: {
     width: 84,

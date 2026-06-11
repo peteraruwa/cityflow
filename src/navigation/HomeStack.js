@@ -17,7 +17,9 @@ import FindAChurchScreen from '../features/find-a-church/FindAChurchScreen';
 import PictureGalleryScreen from '../features/picture-day/screens/PictureGalleryScreen';
 import PictureDetailScreen from '../features/picture-day/screens/PictureDetailScreen';
 import NavigationScreen from '../features/navigation/screens/NavigationScreen';
-
+import AdminDashboardScreen from '../features/admin/AdminDashboardScreen';
+import StayScreen from '../features/stay/StayScreen';
+import LostAndFoundScreen from '../features/lost-found/LostAndFoundScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,6 +51,9 @@ export default function HomeStack() {
       <Stack.Screen name="PictureGallery" component={PictureGalleryScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PictureDetail" component={PictureDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Navigation" component={NavigationScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="Stay" component={StayScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="LostAndFound" component={LostAndFoundScreen} />
     </Stack.Navigator>
   );
 }

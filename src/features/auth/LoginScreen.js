@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import SignUpScreen from './SignUpScreen';
+import ForgotPasswordScreen from './ForgotPasswordScreen';
 import { usePrefs } from '../../shared/context/PrefsContext';
 import { auth } from '../../shared/config/firebase';
 
@@ -63,6 +64,7 @@ export default function LoginScreen({ onLogin }) {
   const [loading, setLoading]   = useState(false);
   const [message, setMessage]   = useState('');
   const [showSignUp, setShowSignUp] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const copy = LOGIN_COPY[language] || LOGIN_COPY.en;
 
   async function handleLogin() {
@@ -92,6 +94,15 @@ export default function LoginScreen({ onLogin }) {
 
   if (showSignUp) {
     return <SignUpScreen onSignUp={onLogin} onBackToLogin={() => setShowSignUp(false)} />;
+  }
+
+  if (showForgotPassword) {
+    return (
+      <ForgotPasswordScreen
+        initialEmail={email}
+        onBackToLogin={() => setShowForgotPassword(false)}
+      />
+    );
   }
 
   return (
@@ -167,7 +178,7 @@ export default function LoginScreen({ onLogin }) {
         </View>
 
         {/* Forgot password */}
-        <TouchableOpacity style={s.forgotRow} hitSlop={8}>
+        <TouchableOpacity style={s.forgotRow} hitSlop={8} onPress={() => setShowForgotPassword(true)}>
           <Text style={s.forgotText}>{copy.forgotPassword}</Text>
         </TouchableOpacity>
 

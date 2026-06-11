@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Bell, BookOpen, Building2, CheckCircle, ChevronLeft, ChevronRight, Church, Heart,
@@ -10,7 +10,10 @@ import { C } from '../../shared/constants/theme';
 import { FONTS } from '../../shared/constants/theme';
 import ScreenHeader from '../../shared/components/ScreenHeader';
 import { usePrefs } from '../../shared/context/PrefsContext';
+import { useUserProfile } from '../../shared/context/UserContext';
 import { translateText } from '../../shared/i18n/runtimeTranslator';
+
+const ADMIN_EMAILS = ['admin@cityflow.com'];
 
 const SECTIONS = [
   {
@@ -78,7 +81,9 @@ const LANGS = [
 export default function MoreScreen({ navigation, route }) {
   const onLogout = route?.params?.onLogout;
   const { language } = usePrefs();
+  const { user } = useUserProfile();
   const tr = (value) => translateText(value, language);
+  const isAdmin = ADMIN_EMAILS.includes(String(user?.email || '').trim().toLowerCase());
   const [page, setPage] = useState(null);
   const [cat, setCat] = useState('General');
   const [msg, setMsg] = useState('');
@@ -176,6 +181,25 @@ export default function MoreScreen({ navigation, route }) {
     <View style={s.root}>
       <ScreenHeader title="More" sub="Account, info & support" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+        {isAdmin && (
+          <View style={s.section}>
+            <Text style={s.kicker}>{tr("Admin")}</Text>
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => navigation.navigate('AdminDashboard')}
+              activeOpacity={0.82}
+            >
+              <View style={[s.rowIcon, { backgroundColor: 'rgba(113,40,206,0.18)', borderColor: 'rgba(148,88,224,0.32)' }]}>
+                <Shield size={17} color={C.purpleL} strokeWidth={1.8} />
+              </View>
+              <View style={s.rowCopy}>
+                <Text style={s.rowLabel}>{tr("Admin Dashboard")}</Text>
+                <Text style={s.rowSub}>{tr("Manage Lost & Found and news updates")}</Text>
+              </View>
+              <ChevronRight size={14} color={C.tm} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        )}
         {SECTIONS.map((section) => (
           <View key={section.title} style={s.section}>
           <Text style={s.kicker}>{tr(section.title)}</Text>
@@ -291,10 +315,11 @@ function DeveloperContactCard({ tr }) {
   );
 }
 
-export function MoreSettingsScreen({ navigation }) {
+export function MoreSettingsScreen({ navigation, onResetApp }) {
   const {
     language,
     setLanguage,
+    resetSettings,
     pushNotifications,
     togglePushNotifications,
     locationServices,
@@ -309,6 +334,24 @@ export function MoreSettingsScreen({ navigation }) {
     { Icon: MapPin, label: 'Location Services', sub: 'For maps & nearby places', on: locationServices, set: toggleLocationServices, color: '#2A7FAB' },
     { Icon: Radio, label: 'In-app Sounds', sub: 'Taps & notification tones', on: inAppSounds, set: toggleInAppSounds, color: '#4A8A5A' },
   ];
+
+  const confirmReset = () => {
+    Alert.alert(
+      tr('Reset Settings'),
+      tr('This will clear your app settings, language choice, and onboarding state. You will return to onboarding.'),
+      [
+        { text: tr('Cancel'), style: 'cancel' },
+        {
+          text: tr('Reset'),
+          style: 'destructive',
+          onPress: async () => {
+            await resetSettings();
+            onResetApp?.();
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={s.root}>
@@ -353,6 +396,11 @@ export function MoreSettingsScreen({ navigation }) {
             </View>
           ))}
         </View>
+
+        <TouchableOpacity onPress={confirmReset} activeOpacity={0.82} style={s.resetSettingsBtn}>
+          <Text style={s.resetSettingsTitle}>{tr("Reset Settings")}</Text>
+          <Text style={s.resetSettingsSub}>{tr("Clear language, preferences, and onboarding state")}</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -617,6 +665,9 @@ const s = StyleSheet.create({
   prefIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   prefLabel: { fontSize: 13, fontWeight: '600', color: C.tp },
   prefSub: { fontSize: 10.5, color: C.ts, marginTop: 1 },
+  resetSettingsBtn: { borderRadius: 16, borderWidth: 1, borderColor: 'rgba(212,79,79,0.28)', backgroundColor: 'rgba(212,79,79,0.08)', paddingVertical: 14, paddingHorizontal: 15, marginTop: 2 },
+  resetSettingsTitle: { fontSize: 13, fontWeight: '800', color: C.red, marginBottom: 3 },
+  resetSettingsSub: { fontSize: 10.5, color: C.ts, lineHeight: 15 },
   privacyPrefRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14 },
   permissionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 14, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14 },
   permissionLabel: { fontSize: 13, fontWeight: '600', color: C.tp },

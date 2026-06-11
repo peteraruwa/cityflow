@@ -47,7 +47,7 @@ export default function MainTabs({ onLogout, onResetApp }) {
       <Tab.Screen
         name="LostFound"
         component={LostAndFoundScreen}
-        options={{ tabBarIcon: ({ color, focused }) => <Package size={20} color={color} strokeWidth={focused?2.2:1.6}/>, tabBarLabel:'Lost & Fnd' }}
+        options={{ tabBarIcon: ({ color, focused }) => <Package size={20} color={color} strokeWidth={focused?2.2:1.6}/>, tabBarLabel:'Lost & Found' }}
       />
       <Tab.Screen
         name="More"
