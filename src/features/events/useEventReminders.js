@@ -1,5 +1,6 @@
 // src/features/events/useEventReminders.js
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Local notifications – only import on native (not web)
 let Notifications;
@@ -10,7 +11,7 @@ try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
-        shouldPlaySound: true,
+        shouldPlaySound: (await AsyncStorage.getItem('pref_in_app_sounds')) === 'true',
         shouldSetBadge: true,
       }),
     });
@@ -34,6 +35,16 @@ function parseTimeTo24Hour(timeStr) {
 export async function scheduleEventReminders(event, reminderSettings) {
   // If notifications module is not available, silently ignore
   if (!Notifications || Platform.OS === 'web') return;
+  const pushEnabled = await AsyncStorage.getItem('pref_push_notifications');
+  if (pushEnabled === 'false') return;
+
+  const permissions = await Notifications.getPermissionsAsync();
+  let status = permissions.status;
+  if (status !== 'granted') {
+    const requested = await Notifications.requestPermissionsAsync();
+    status = requested.status;
+  }
+  if (status !== 'granted') return;
 
   const { date, time, title, id } = event;
   const [year, month, day] = date.split('-');

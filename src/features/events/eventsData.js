@@ -1,0 +1,56 @@
+export const EVENTS = [
+  {
+    id: 'victory-service',
+    title: 'Sunday Victory Service',
+    date: '2026-06-14',
+    time: '8:00 AM - 11:30 AM',
+    day: 'SUN',
+    tag: 'LIVE',
+    color: '#D44F4F',
+    live: true,
+    yt: 'https://www.youtube.com/@rccg',
+    location: 'Main Auditorium - Redemption City',
+    venue: 'Main Auditorium',
+    description: 'A powerful service of worship, the Word and testimonies, led by the General Overseer. Doors open 7:00 AM - come early, seats fill up fast.',
+  },
+  {
+    id: 'thanksgiving-service',
+    title: 'Monthly Thanksgiving Service',
+    date: '2026-06-21',
+    time: '6:00 PM - 8:30 PM',
+    day: 'SAT',
+    tag: 'SPECIAL',
+    color: '#C48D38',
+    location: 'Main Auditorium',
+    venue: 'Main Auditorium',
+    description: 'A special thanksgiving gathering for families, guests, and residents across the city.',
+  },
+  {
+    id: 'holy-ghost-service',
+    title: 'Holy Ghost Service',
+    date: '2026-06-28',
+    time: '6:00 PM - 10:00 PM',
+    day: 'FRI',
+    tag: 'SERVICE',
+    color: '#7128CE',
+    location: 'Prayer Ground',
+    venue: 'Prayer Ground',
+    description: 'A night of prayer, praise, teaching and ministry for residents and guests across Redemption City.',
+  },
+  {
+    id: 'youth-fellowship',
+    title: 'Youth Fellowship',
+    date: '2026-06-30',
+    time: '4:00 PM - 6:00 PM',
+    day: 'SUN',
+    tag: 'YOUTH',
+    color: '#2A7FAB',
+    location: 'Youth Centre',
+    venue: 'Youth Centre',
+    description: 'A fellowship gathering for young people with music, discussion, prayer, and mentorship.',
+  },
+];
+
+export function getEventById(eventId) {
+  return EVENTS.find((event) => event.id === eventId) || EVENTS[0];
+}

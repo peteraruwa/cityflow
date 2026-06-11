@@ -10,6 +10,7 @@ import QuizScreen from "../features/quiz/QuizScreen";
 import CityTourScreen from "../features/tour/CityTourScreen";
 import SearchScreen from "../features/search/SearchScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
+import NewsDetailScreen from "../features/notifications/NewsDetailScreen";
 import EventsScreen from '../features/events/EventsScreen';
 import EventDetailScreen from '../features/events/EventDetailScreen';
 import FindAChurchScreen from '../features/find-a-church/FindAChurchScreen';
@@ -41,6 +42,7 @@ export default function HomeStack() {
       <Stack.Screen name="CityTour" component={CityTourScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
       <Stack.Screen name="Events" component={EventsScreen} />
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
       <Stack.Screen name="FindAChurch" component={FindAChurchScreen} />

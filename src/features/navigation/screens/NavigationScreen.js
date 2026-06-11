@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  TextInput,
   ActivityIndicator,
   Platform,
   Animated,
@@ -25,6 +26,7 @@ import {
   Locate,
   Navigation2,
   Compass,
+  Search,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -34,6 +36,7 @@ import {
   OSRM_BASE_URL,
 } from '../data/locations';
 import { C } from '../../../shared/constants/theme';
+import { usePrefs } from '../../../shared/context/PrefsContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_PEEK = 220;
@@ -205,35 +208,45 @@ const formatDistance = (metres) => {
 };
 
 const CATEGORY_COLORS = {
-  worship:       PURPLE,
-  landmark:      GOLD,
-  facility:      '#2A7FAB',
-  medical:       RED,
-  food:          GOLD,
-  retail:        '#3DAA6E',
+  church: '#7128CE',
   accommodation: '#2A7FAB',
-  admin:         TEXT_SEC,
-  sports:        '#4AAD8E',
+  estate: '#4A8A5A',
+  medical: RED,
+  education: '#6B9BC0',
+  park: '#4A8A5A',
+  administration: TEXT_SEC,
+  parking: '#6A6880',
+  shopping: '#3DAA6E',
+  dining: GOLD,
+  media: '#9B5CF6',
+  bank: '#C48D38',
+  pastors_quarters: '#B07020',
 };
 
 const CATEGORY_LABELS = {
-  worship:       'Worship',
-  landmark:      'Landmark',
-  facility:      'Facility',
-  medical:       'Medical',
-  food:          'Food',
-  retail:        'Retail',
+  church: 'Worship',
   accommodation: 'Stay',
-  admin:         'Admin',
-  sports:        'Sports',
+  estate: 'Estate',
+  medical: 'Medical',
+  education: 'Education',
+  park: 'Park',
+  administration: 'Admin',
+  parking: 'Parking',
+  shopping: 'Shopping',
+  dining: 'Dining',
+  media: 'Media',
+  bank: 'Bank',
+  pastors_quarters: "Pastors' Quarters",
 };
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export default function NavigationScreen({ navigation }) {
+export default function NavigationScreen({ navigation, route }) {
+  const { locationServices } = usePrefs();
   const insets = useSafeAreaInsets();
   const webviewRef  = useRef(null);
   const locationSub = useRef(null);
   const sheetAnim   = useRef(new Animated.Value(SHEET_PEEK)).current;
+  const initialDestApplied = useRef(false);
 
   const [userLocation,  setUserLocation]  = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -242,10 +255,24 @@ export default function NavigationScreen({ navigation }) {
   const [loadingRoute,  setLoadingRoute]  = useState(false);
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [mapReady,      setMapReady]      = useState(false);
+  const [locationQuery, setLocationQuery] = useState('');
+
+  const sendToMap = useCallback((obj) => {
+    webviewRef.current?.injectJavaScript(
+      `document.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify(obj).replace(/'/g, "\\'")}' }));true;`
+    );
+  }, []);
 
   // Location
   useEffect(() => {
     (async () => {
+      if (!locationServices) {
+        locationSub.current?.remove();
+        setUserLocation(null);
+        setLocationError('Location services are off. Enable them in Settings to use live navigation.');
+        return;
+      }
+      setLocationError(null);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setLocationError('Location permission denied. Enable it in Settings to use navigation.');
@@ -262,19 +289,13 @@ export default function NavigationScreen({ navigation }) {
       );
     })();
     return () => locationSub.current?.remove();
-  }, []);
+  }, [locationServices, sendToMap]);
 
   useEffect(() => {
     if (mapReady && userLocation) {
       sendToMap({ type: 'UPDATE_LOCATION', lat: userLocation.latitude, lng: userLocation.longitude });
     }
-  }, [mapReady]);
-
-  const sendToMap = useCallback((obj) => {
-    webviewRef.current?.injectJavaScript(
-      `document.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify(obj).replace(/'/g, "\\'")}' }));true;`
-    );
-  }, []);
+  }, [mapReady, userLocation, sendToMap]);
 
   const fetchRoute = useCallback(async (dest) => {
     if (!userLocation) return;
@@ -302,6 +323,21 @@ export default function NavigationScreen({ navigation }) {
     fetchRoute(loc);
   }, [fetchRoute]);
 
+  useEffect(() => {
+    const initialDest = route?.params?.initialDest;
+    if (!initialDest || initialDestApplied.current || !userLocation || !mapReady) return;
+    const wanted = String(initialDest).toLowerCase();
+    const target = CAMP_LOCATIONS.find((loc) =>
+      [loc.name, loc.shortName, loc.id].filter(Boolean).some((value) =>
+        String(value).toLowerCase() === wanted || String(value).toLowerCase().includes(wanted)
+      )
+    );
+    if (target) {
+      initialDestApplied.current = true;
+      handleSelectDestination(target);
+    }
+  }, [route?.params?.initialDest, userLocation, mapReady, handleSelectDestination]);
+
   const handleClearRoute = useCallback(() => {
     setDestination(null);
     setRouteInfo(null);
@@ -319,6 +355,13 @@ export default function NavigationScreen({ navigation }) {
   const toggleSheet = () => sheetExpanded ? collapseSheet() : expandSheet();
 
   const accentColor = destination ? (CATEGORY_COLORS[destination.category] || PURPLE) : PURPLE;
+  const filteredLocations = CAMP_LOCATIONS.filter((loc) => {
+    const queryText = locationQuery.trim().toLowerCase();
+    if (!queryText) return true;
+    return [loc.name, loc.shortName, loc.description, loc.category, loc.subcategory, loc.phone, loc.address]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(queryText));
+  });
 
   const renderLocation = useCallback(({ item }) => {
     const color   = CATEGORY_COLORS[item.category] || PURPLE;
@@ -346,7 +389,7 @@ export default function NavigationScreen({ navigation }) {
 
         {/* Category tag */}
         <View style={[s.catTag, { backgroundColor: color + '18', borderColor: color + '30' }]}>
-          <Text style={[s.catTagTxt, { color }]}>{catLabel}</Text>
+          <Text style={[s.catTagTxt, { color }]} numberOfLines={1}>{catLabel}</Text>
         </View>
 
         {/* Active indicator */}
@@ -503,14 +546,41 @@ export default function NavigationScreen({ navigation }) {
           )}
         </TouchableOpacity>
 
+        <View style={s.destinationSearchWrap}>
+          <View style={s.destinationSearchBar}>
+            <Search size={14} color={TEXT_SEC} strokeWidth={2} />
+            <TextInput
+              value={locationQuery}
+              onChangeText={(value) => {
+                setLocationQuery(value);
+                if (!sheetExpanded) expandSheet();
+              }}
+              placeholder="Search locations..."
+              placeholderTextColor={TEXT_MUT}
+              style={s.destinationSearchInput}
+              autoCapitalize="none"
+            />
+            {locationQuery ? (
+              <TouchableOpacity onPress={() => setLocationQuery('')} hitSlop={8}>
+                <X size={14} color={TEXT_SEC} strokeWidth={2.2} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
         {/* Location list */}
         <FlatList
-          data={CAMP_LOCATIONS}
+          data={filteredLocations}
           renderItem={renderLocation}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.locList}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          ListEmptyComponent={() => (
+            <View style={s.noLocations}>
+              <Text style={s.noLocationsText}>No locations found</Text>
+            </View>
+          )}
         />
       </Animated.View>
     </View>
@@ -664,6 +734,30 @@ const s = StyleSheet.create({
   categoryStripTxt: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   categoryStripDesc: { fontSize: 11, color: TEXT_SEC, flex: 1 },
 
+  destinationSearchWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 2,
+    backgroundColor: SURF_HI,
+  },
+  destinationSearchBar: {
+    minHeight: 42,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+  destinationSearchInput: {
+    flex: 1,
+    color: TEXT_PRI,
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+
   // Location list
   locList: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 },
   locItem: {
@@ -677,7 +771,7 @@ const s = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1,
   },
-  locEmoji: { fontSize: 18 },
+  locEmoji: { fontSize: 11, fontWeight: '800', color: TEXT_PRI, letterSpacing: 0.4 },
   locText: { flex: 1 },
   locName: { fontSize: 13, fontWeight: '700', color: TEXT_PRI, letterSpacing: -0.2 },
   locDesc: { fontSize: 11, color: TEXT_SEC, marginTop: 2 },
@@ -685,8 +779,11 @@ const s = StyleSheet.create({
   catTag: {
     paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: 8, borderWidth: 1,
+    maxWidth: 94,
   },
   catTagTxt: { fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  noLocations: { paddingVertical: 28, alignItems: 'center' },
+  noLocationsText: { fontSize: 12, color: TEXT_SEC, fontWeight: '600' },
 
   activeBar: {
     position: 'absolute', left: 0, top: 8, bottom: 8,

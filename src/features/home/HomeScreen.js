@@ -1,123 +1,144 @@
-// src/features/home/HomeScreen.js
-// ============================================================
-// IMPORTS
-// ============================================================
-import React, { useRef, useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
   Animated,
-  Linking,
   Modal,
   Pressable,
+  ImageBackground,
+  Linking,
+  ScrollView,
   Platform,
   StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
-  MapPin,
-  Search,
-  Bell,
-  Navigation,
-  Building2,
-  Clock,
-  Leaf,
-  Coffee,
-  BookOpen,
-  Radio,
   AlertCircle,
+  ArrowRight,
+  Bell,
+  BookOpen,
   Bot,
-  Send,
+  Building2,
+  CalendarDays,
+  Camera,
+  Car,
   ChevronRight,
-  Star,
+  Clock,
+  Cloud,
+  CloudRain,
+  Coffee,
+  Droplets,
+  Eye,
+  FileText,
+  Leaf,
+  MapPin,
+  Navigation,
+  Quote,
+  Radio,
+  Search,
+  Send,
   Siren,
+  Sparkles,
+  Star,
+  Sun,
+  Sunrise,
+  Thermometer,
+  Trophy,
   Utensils,
+  Wind,
+  X,
 } from "lucide-react-native";
-
-// Shared
 import { C } from "../../shared/constants/theme";
-import SectionHeader from "../../shared/components/SectionHeader";
-import PulsingDot from "../../shared/components/PulsingDot";
-import { TODAYS_OPEN_HEAVEN } from "../../shared/data/devotional";
-import { getActions } from "../../shared/data/actions";
+import { usePrefs } from "../../shared/context/PrefsContext";
+import { useUserProfile } from "../../shared/context/UserContext";
+import { translateText } from "../../shared/i18n/runtimeTranslator";
+import { allQuotes } from "../../shared/data/quotes";
+import { GALLERY } from "../picture-day/data/gallery";
+import { NEWS_ITEMS } from "../notifications/notificationData";
 
-// Features
-import QuoteOfTheDay from "../quote-day/QuoteOfTheDay";
-import WeatherWidget from "../weather-widget/WeatherWidget";
-import PictureOfTheDay from "../picture-day/PictureOfTheDay";
-import OpenHeavenDevotional from "../devotional/OpenHeavenDevotional";
-import NotificationsPanel from "../notifications/NotificationsPanel";
-import EventsPreview from "../events/EventsPreview";
-import FindAChurchSection from "../find-a-church/FindAChurchSection";
+const TICKER_ITEMS = [
+  "Sunday Victory Service - live now at the Main Auditorium",
+  "Main Camp Road closed 10AM-2PM - use Alternative Route 2",
+  "Monthly Thanksgiving Service - Saturday, 6:00 PM",
+  "Holy Ghost Service - Friday, 6:00 PM",
+  "Lost & Found: black wallet recovered at Gate B - contact security",
+];
 
-// Firebase
-import { auth } from "../../shared/config/firebase";
+const EVENTS = [
+  { id: "victory-service", day: "SUN", date: "16", tag: "LIVE", title: "Sunday Victory Service", time: "8:00 AM", venue: "Main Auditorium", color: "#D44F4F", live: true },
+  { id: "thanksgiving-service", day: "SAT", date: "22", tag: "SPECIAL", title: "Monthly Thanksgiving Service", time: "6:00 PM", venue: "Main Auditorium", color: "#C48D38" },
+  { id: "holy-ghost-service", day: "FRI", date: "28", tag: "SERVICE", title: "Holy Ghost Service", time: "6:00 PM", venue: "Prayer Ground", color: "#7128CE" },
+  { id: "youth-fellowship", day: "SUN", date: "30", tag: "YOUTH", title: "Youth Fellowship", time: "4:00 PM", venue: "Youth Centre", color: "#2A7FAB" },
+];
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const IOS_TOP = Platform.OS === "ios" ? 52 : (StatusBar.currentHeight ?? 28);
-const GOLD = "#C48D38";
-const PURPLE = "#7128CE";
-const PURPLE_L = "#8B5CF6";
-const SURFACE = "rgba(255,255,255,0.04)";
-const BORDER = "rgba(255,255,255,0.07)";
-const TEXT_PRI = "#EBE3D6";
-const TEXT_SEC = "#8C7DA0";
-const TEXT_MUT = "#504460";
-const BG = "#08011A";
+const FUN_FACTS = [
+  {
+    icon: "🏙️",
+    fact: "Redemption City was officially commissioned in 1999 and now hosts over 1 million visitors annually during major conventions.",
+  },
+];
 
-// ─── Layout tokens ────────────────────────────────────────────────────────────
-const H_PAD = 18;       // horizontal page padding
-const SECTION_MB = 22;  // margin-bottom between sections
-const CARD_RADIUS = 22; // default card border-radius
-const CARD_PAD = 18;    // default card internal padding
-const ICON_SIZE = 38;   // standard icon container size
-const ICON_RADIUS = 12; // standard icon container border-radius
+const DEVOTIONAL = {
+  date: "Today",
+  topic: "The Power of Praise",
+  text: "Praise is the highest form of prayer. When you praise God in the midst of your circumstances, you invite His presence and power into your situation...",
+  verse: "Let everything that has breath praise the Lord.",
+  ref: "Psalm 150:6",
+  reading: "Psalm 150",
+};
 
-// ============================================================
-// COMPONENT
-// ============================================================
+const OPEN_HEAVENS_LINKS = {
+  website: "https://eopenheavens.com",
+  android: "https://play.google.com/store/apps/details?id=com.open_heavens",
+  ios: "https://apps.apple.com/us/app/open-heavens-devotional/id6471082691",
+};
+
+const ACTIONS = [
+  { Icon: Navigation, label: "Navigate", sub: "Live city map", color: "#7128CE", route: "Navigation" },
+  { Icon: Car, label: "CityRide", sub: "Book a ride", color: "#C48D38", tab: "CityRide" },
+  { Icon: Building2, label: "Stay", sub: "Guest houses", color: "#2A7FAB", tab: "Explore" },
+  { Icon: CalendarDays, label: "Events", sub: "What's on today", color: "#4A8A5A", route: "Events" },
+];
+
+const WEATHER = {
+  city: "Redemption City",
+  temp: 29,
+  feels: 32,
+  conditionMain: "Clear",
+  condition: "Sunny",
+  desc: "Sunny - clear skies",
+  humidity: "64%",
+  wind: "12 km/h",
+  visibility: "10 km",
+  hourly: [
+    { t: "Now", temp: 29, main: "Clear" },
+    { t: "1PM", temp: 31, main: "Clear" },
+    { t: "2PM", temp: 31, main: "Clouds" },
+    { t: "3PM", temp: 30, main: "Clouds" },
+    { t: "4PM", temp: 28, main: "Rain" },
+    { t: "5PM", temp: 27, main: "Rain" },
+  ],
+  days: [
+    { d: "Tomorrow", main: "Clouds", hi: 30, lo: 22 },
+    { d: "Thursday", main: "Rain", hi: 27, lo: 21 },
+    { d: "Friday", main: "Thunderstorm", hi: 26, lo: 21 },
+    { d: "Saturday", main: "Clear", hi: 31, lo: 23 },
+  ],
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const liveDot = useRef(new Animated.Value(1)).current;
+  const isFocused = useIsFocused();
+  const { language } = usePrefs();
+  const { user } = useUserProfile();
+  const [showWeather, setShowWeather] = useState(false);
+  const [showDevotional, setShowDevotional] = useState(false);
+  const tr = (value) => translateText(value, language);
+  const firstName = user?.firstName || "Guest";
 
-  const [notificationsUnread, setNotificationsUnread] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [userName, setUserName] = useState("Guest");
-  const ACTIONS = getActions(navigation);
-
-  // ── Animate live dot ──────────────────────────────────────
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveDot, { toValue: 0.25, duration: 800, useNativeDriver: false }),
-        Animated.timing(liveDot, { toValue: 1, duration: 800, useNativeDriver: false }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
-
-  // ── Demo unread dot ───────────────────────────────────────
-  useEffect(() => { setNotificationsUnread(true); }, []);
-
-  // ── Firebase user name ────────────────────────────────────
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      const name = user.displayName;
-      if (name) {
-        setUserName(name.split(" ")[0]);
-      } else if (user.email) {
-        setUserName(user.email.split("@")[0]);
-      }
-    }
-  }, []);
-
-  // ── Helpers ───────────────────────────────────────────────
   const getGreeting = () => {
     const h = new Date().getHours();
     if (h < 12) return "Good morning";
@@ -125,902 +146,957 @@ export default function HomeScreen() {
     return "Good evening";
   };
 
-  // ──────────────────────────────────────────────────────────
-  // RENDER
-  // ──────────────────────────────────────────────────────────
+  const goTab = (name) => navigation.getParent()?.navigate(name);
+  const goRoute = (name, params) => navigation.navigate(name, params);
+
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={BG} />
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      {/* ── App Header ───────────────────────────────────── */}
       <View style={s.header}>
         <View>
           <Text style={s.brand}>CityFlow</Text>
           <View style={s.locRow}>
-            <MapPin size={9} color={GOLD} strokeWidth={2.5} />
-            <Text style={s.locTxt}> Redemption City · 110115</Text>
+            <MapPin size={10} color={C.gold} strokeWidth={2.5} />
+            <Text style={s.locTxt}>{tr("Redemption City")} · 110115</Text>
           </View>
         </View>
         <View style={s.headerActions}>
-          <TouchableOpacity
-            style={s.headerBtn}
-            onPress={() => navigation.navigate("Search")}
-            activeOpacity={0.7}
-          >
-            <Search size={15} color={TEXT_SEC} strokeWidth={1.8} />
+          <TouchableOpacity style={s.headerBtn} onPress={() => goRoute("Search")} activeOpacity={0.78}>
+            <Search size={16} color={C.tp} strokeWidth={1.8} />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={s.headerBtn}
-            onPress={() => setShowNotifications(true)}
-            activeOpacity={0.7}
-          >
-            <Bell size={15} color={TEXT_SEC} strokeWidth={1.8} />
-            {notificationsUnread && <View style={s.notifDot} />}
+          <TouchableOpacity style={s.headerBtn} onPress={() => goRoute("Notifications")} activeOpacity={0.78}>
+            <Bell size={16} color={C.tp} strokeWidth={1.8} />
+            <View style={s.notifDot} />
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* ── Thin rule under header ───────────────────────── */}
       <View style={s.headerRule} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.scroll}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+        <NewsTicker tr={tr} active={isFocused} onTap={() => goRoute("Notifications")} />
 
-        {/* ── Greeting + Weather ─────────────────────────── */}
-        <View style={s.greetWrap}>
-          <View style={s.greetRow}>
-            <View style={s.greetText}>
-              <Text style={s.greetName}>{getGreeting()},</Text>
-              <Text style={s.greetUser}>{userName} 👋</Text>
-              <Text style={s.greetSub}>Welcome to Redemption City of God</Text>
-            </View>
-            <WeatherWidget />
+        <View style={s.greetingRow}>
+          <View style={s.greetingText}>
+            <Text style={s.greetingName}>{tr(getGreeting())},</Text>
+            <Text style={s.greetingUser}>{tr(firstName)} {"\uD83D\uDC4B"}</Text>
+            <Text style={s.greetingSub}>{tr("Welcome to Redemption City of God")}</Text>
           </View>
+          <WeatherWidget tr={tr} onOpen={() => setShowWeather(true)} />
         </View>
 
-        {/* ── Quote of the Day ───────────────────────────── */}
-        <QuoteOfTheDay />
+        <QuoteOfTheDay tr={tr} />
 
-        {/* ── Hero Card ──────────────────────────────────── */}
-        <View style={s.heroWrap}>
-          <LinearGradient
-            colors={["rgba(90,18,165,0.96)", "rgba(38,8,75,0.98)", "rgba(10,2,24,1)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={s.heroCard}
-          >
-            <View style={s.heroTopRow}>
-              <View style={s.liveChip}>
-                <PulsingDot size={5} color="#F06565" />
-                <Text style={s.liveTxt}> LIVE NOW</Text>
-              </View>
-              <View style={s.heroDivLine} />
-              <Text style={s.heroDateTxt}>Today</Text>
-            </View>
+        <HeroCard tr={tr} onDirections={() => goRoute("Navigation", { initialDest: "NEW ARENA Auditorium" })} onDetails={() => goRoute("EventDetail", { eventId: "victory-service" })} />
 
-            <Text style={s.heroTitle}>Sunday Victory Service</Text>
+        <SosBanner tr={tr} onPress={() => goRoute("Emergency")} />
 
-            <View style={s.heroMeta}>
-              <View style={s.heroMetaRow}>
-                <Building2 size={11} color={GOLD} strokeWidth={1.8} />
-                <Text style={s.heroMetaTxt}> Main Auditorium · Redemption City</Text>
-              </View>
-              <View style={s.heroMetaRow}>
-                <Clock size={11} color={GOLD} strokeWidth={1.8} />
-                <Text style={s.heroMetaTxt}> 8:00 AM – 11:30 AM</Text>
-              </View>
-            </View>
-
-            <View style={s.heroBtns}>
-              <TouchableOpacity style={s.heroBtn1} activeOpacity={0.85}>
-                <Navigation size={12} color="#fff" strokeWidth={2.5} />
-                <Text style={s.heroBtnTxt1}> Get Directions</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.heroBtn2} activeOpacity={0.85}>
-                <Text style={s.heroBtnTxt2}>View Details</Text>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* ── Emergency Banner ───────────────────────────── */}
-        <TouchableOpacity
-          style={s.sosBanner}
-          onPress={() => navigation.navigate("Emergency")}
-          activeOpacity={0.85}
-        >
-          <View style={s.sosIcon}>
-            <Siren size={18} color="#F06565" strokeWidth={1.8} />
-          </View>
-          <View style={s.sosInfo}>
-            <Text style={s.sosTitle}>Emergency / SOS</Text>
-            <View style={s.sosNumbers}>
-              {[["199", "Ambulance"], ["112", "Police"], ["190", "Fire"], ["122", "Road"]].map(
-                ([n, l]) => (
-                  <Text key={n} style={s.sosNum}>
-                    {n} <Text style={s.sosLabel}>{l} </Text>
-                  </Text>
-                )
-              )}
-            </View>
-          </View>
-          <PulsingDot size={7} color="#F06565" style={{ marginRight: 4 }} />
-          <ChevronRight size={13} color="#F06565" strokeWidth={2} />
-        </TouchableOpacity>
-
-        {/* ── Quick Actions ──────────────────────────────── */}
-        {/* "Find Your Way" card removed — navigation is already included via getActions() */}
         <View style={s.section}>
-          <SectionHeader title="Quick Actions" />
+          <SectionHeader tr={tr} title="Quick Actions" action={null} />
           <View style={s.actionsGrid}>
-            {ACTIONS.map(({ Icon, label, sub, color, onPress }, i) => (
+            {ACTIONS.map(({ Icon, label, sub, color, route, tab }) => (
               <TouchableOpacity
-                key={i}
+                key={label}
                 style={s.actionCard}
-                onPress={onPress}
-                activeOpacity={0.8}
+                onPress={() => (tab ? goTab(tab) : goRoute(route))}
+                activeOpacity={0.82}
               >
                 <View style={[s.actionIcon, { backgroundColor: `${color}1A`, borderColor: `${color}28` }]}>
                   <Icon size={18} color={color} strokeWidth={1.8} />
                 </View>
-                <Text style={s.actionLabel}>{label}</Text>
-                <Text style={s.actionSub}>{sub}</Text>
+                <Text style={s.actionLabel}>{tr(label)}</Text>
+                <Text style={s.actionSub}>{tr(sub)}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* ── Upcoming Events ────────────────────────────── */}
-        <EventsPreview
-          onSeeAllPress={() => navigation.navigate("Events")}
-          onEventPress={(eventId) => navigation.navigate("EventDetail", { eventId })}
-        />
+        <EventsPreview tr={tr} onSeeAll={() => goRoute("Events")} onEventPress={(eventId) => goRoute("EventDetail", { eventId })} />
 
-        {/* ── Updates ────────────────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader title="Updates" />
-          <View style={s.updatesList}>
-            {[
-              {
-                Icon: Radio,
-                color: PURPLE,
-                title: "Monthly Thanksgiving Service",
-                body: "Join us Saturday at 6PM for a special celebration.",
-                time: "2h ago",
-              },
-              {
-                Icon: AlertCircle,
-                color: "#D44F4F",
-                title: "Lost: Black Wallet — Gate B",
-                body: "A black leather wallet was found at Gate B.",
-                time: "4h ago",
-              },
-              {
-                Icon: Navigation,
-                color: GOLD,
-                title: "Camp Road Closure",
-                body: "Main Camp Road closed 10AM–2PM. Use Alternative Route 2.",
-                time: "1h ago",
-              },
-            ].map(({ Icon, color, title, body, time }, i) => (
-              <View key={i} style={s.updateCard}>
-                <View style={[s.updateIcon, { backgroundColor: `${color}18`, borderColor: `${color}28` }]}>
-                  <Icon size={15} color={color} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={s.updateTopRow}>
-                    <Text style={s.updateTitle} numberOfLines={1}>{title}</Text>
-                    <Text style={s.updateTime}>{time}</Text>
-                  </View>
-                  <Text style={s.updateBody} numberOfLines={2}>{body}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
+        <Announcements tr={tr} onNews={(notificationId) => goRoute("NewsDetail", { notificationId })} />
 
-        {/* ── City Tour ──────────────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Redemption City Tour"
-            action="Explore"
-            onAction={() => navigation.navigate("CityTour")}
-          />
-          <TouchableOpacity
-            onPress={() => navigation.navigate("CityTour")}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={["rgba(42,127,171,0.22)", "rgba(10,2,24,1)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={s.tourCard}
-            >
-              <View style={s.tourHeader}>
-                <View style={s.tourIcon}>
-                  <Navigation size={17} color="#2A7FAB" strokeWidth={1.8} />
-                </View>
-                <View>
-                  <Text style={s.tourTitle}>Guided City Tour</Text>
-                  <Text style={s.tourSub}>8 stops · ~2 hours · Self-paced</Text>
-                </View>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tourStops}>
-                {[
-                  { Icon: Building2, name: "Main Auditorium", color: "#6B35C0" },
-                  { Icon: Leaf, name: "Prayer Mountain", color: "#4A8A5A" },
-                  { Icon: Coffee, name: "Camp Restaurant", color: "#C48D38" },
-                  { Icon: BookOpen, name: "Bookshop", color: "#9B5E3A" },
-                ].map(({ Icon, name, color }, i) => (
-                  <View
-                    key={i}
-                    style={[s.tourStop, { backgroundColor: `${color}14`, borderColor: `${color}25` }]}
-                  >
-                    <Icon size={11} color={color} strokeWidth={2} />
-                    <Text style={s.tourStopTxt}>{name}</Text>
-                  </View>
-                ))}
-                <View style={[s.tourStop, { backgroundColor: C.surfHi, borderColor: C.b }]}>
-                  <Text style={{ fontSize: 10.5, color: C.ts }}>+4 more</Text>
-                </View>
-              </ScrollView>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+        <CityTourCard tr={tr} onPress={() => goRoute("CityTour")} />
 
-        {/* ── Find a Church ──────────────────────────────── */}
-        <FindAChurchSection navigation={navigation} />
+        <FindChurchCard tr={tr} onPress={() => goRoute("FindAChurch")} />
 
-        {/* ── Business Directory ─────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Business Directory"
-            action="See all"
-            onAction={() => navigation.navigate("BusinessDirectory")}
-          />
-          <TouchableOpacity
-            style={s.bizFeatured}
-            onPress={() => navigation.navigate("BusinessDirectory")}
-            activeOpacity={0.8}
-          >
-            <View style={s.bizIcon}>
-              <Utensils size={15} color={GOLD} strokeWidth={2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.bizName}>Camp Restaurant</Text>
-              <Text style={s.bizSub}>Open · 7AM–9PM · Tap to call</Text>
-            </View>
-            <View style={s.ratingRow}>
-              <Star size={9} color={GOLD} fill={GOLD} strokeWidth={0} />
-              <Text style={s.ratingTxt}> 4.3</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        <BusinessCard tr={tr} onPress={() => goRoute("BusinessDirectory")} />
 
-        {/* ── CityFlow AI ────────────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="CityFlow AI"
-            action="Open chat"
-            onAction={() => navigation.navigate("AIAssistant")}
-          />
-          <View style={s.aiCard}>
-            <View style={s.aiHeader}>
-              <View style={s.aiAvatar}>
-                <Bot size={14} color={PURPLE_L} strokeWidth={2} />
-              </View>
-              <View>
-                <Text style={s.aiName}>CityFlow AI</Text>
-                <View style={s.aiStatusRow}>
-                  <PulsingDot size={5} color={C.green} />
-                  <Text style={s.aiStatus}> Online</Text>
-                </View>
-              </View>
-            </View>
-            <View style={s.aiMsg}>
-              <View style={s.aiMsgAvatar}>
-                <Bot size={11} color={PURPLE_L} strokeWidth={2} />
-              </View>
-              <View style={s.aiBubble}>
-                <Text style={s.aiBubbleTxt}>
-                  Hi! I'm your CityFlow AI. Ask me anything about Redemption City.
-                </Text>
-              </View>
-            </View>
-            <View style={s.aiChips}>
-              {["Find a restaurant", "Book a CityRide", "Emergency contacts"].map((q) => (
-                <TouchableOpacity
-                  key={q}
-                  style={s.aiChip}
-                  onPress={() => navigation.navigate("AIAssistant")}
-                >
-                  <Text style={s.aiChipTxt}>{q}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={s.aiInputRow}
-              onPress={() => navigation.navigate("AIAssistant")}
-            >
-              <Text style={s.aiPlaceholder}>Ask me anything about the city…</Text>
-              <View style={s.aiSendBtn}>
-                <Send size={12} color="#fff" strokeWidth={2} />
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <AiCard tr={tr} onPress={() => goRoute("AIAssistant")} />
 
-        {/* ── Picture of the Day ─────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Picture of the Day"
-            action="View Gallery"
-            onAction={() => navigation.navigate("PictureGallery")}
-          />
-          <PictureOfTheDay navigation={navigation} />
-        </View>
+        <PictureCard tr={tr} onPress={() => goRoute("PictureGallery")} />
 
-        {/* ── Did You Know ───────────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Did You Know?"
-            action="See all"
-            onAction={() => navigation.navigate("FunFacts")}
-          />
-          <TouchableOpacity
-            onPress={() => navigation.navigate("FunFacts")}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={["rgba(113,40,206,0.18)", "rgba(10,2,24,1)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={s.factCard}
-            >
-              <Text style={s.factEmoji}>🏙️</Text>
-              <Text style={s.factCounter}>FACT 1 OF 8</Text>
-              <Text style={s.factTxt}>
-                Redemption City was officially commissioned in 1999 and now hosts over 1 million visitors annually during major conventions.
-              </Text>
-              <View style={s.factDots}>
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <View key={i} style={[s.factDot, i === 0 && { backgroundColor: GOLD }]} />
-                ))}
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+        <FactCard tr={tr} onPress={() => goRoute("FunFacts")} />
 
-        {/* ── Quiz ───────────────────────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Know Your City Quiz"
-            action="Play"
-            onAction={() => navigation.navigate("Quiz")}
-          />
-          <TouchableOpacity onPress={() => navigation.navigate("Quiz")} activeOpacity={0.85}>
-            <LinearGradient
-              colors={["rgba(196,141,56,0.16)", "rgba(10,2,24,1)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={s.quizCard}
-            >
-              <Text style={s.quizEmoji}>🏙️</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.quizTitle}>Know Your City</Text>
-                <Text style={s.quizSub}>8 questions about Redemption City.</Text>
-                <View style={s.quizBadges}>
-                  {[["📋", "8 Qs"], ["⏱️", "~3 min"], ["🏆", "Earn badge"]].map(([ic, lb]) => (
-                    <View key={lb} style={s.quizBadge}>
-                      <Text style={{ fontSize: 10 }}>{ic}</Text>
-                      <Text style={s.quizBadgeTxt}> {lb}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+        <QuizCard tr={tr} onPress={() => goRoute("Quiz")} />
 
-        {/* ── Open Heaven Devotional ─────────────────────── */}
-        <View style={s.section}>
-          <SectionHeader
-            title="Open Heaven Devotional"
-            action="Read Full"
-            onAction={() => Linking.openURL(TODAYS_OPEN_HEAVEN.link)}
-          />
-          <OpenHeavenDevotional />
-        </View>
+        <DevotionalCard tr={tr} onOpen={() => setShowDevotional(true)} />
 
+        <View style={{ height: 8 }} />
       </ScrollView>
 
-      {/* ── Notifications Modal ────────────────────────────── */}
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <Pressable style={s.modalOverlay} onPress={() => setShowNotifications(false)} />
-        <View style={s.notificationPanel}>
-          <View style={s.panelHandle} />
-          <NotificationsPanel onClose={() => setShowNotifications(false)} />
-        </View>
-      </Modal>
+      <WeatherModal tr={tr} visible={showWeather} onClose={() => setShowWeather(false)} />
+      <OpenHeavensModal tr={tr} visible={showDevotional} onClose={() => setShowDevotional(false)} />
     </View>
   );
 }
 
-// ============================================================
-// STYLES
-// ============================================================
+async function openExternalUrl(url, fallbackUrl = OPEN_HEAVENS_LINKS.website) {
+  try {
+    await Linking.openURL(url);
+  } catch (error) {
+    if (fallbackUrl && fallbackUrl !== url) {
+      await Linking.openURL(fallbackUrl).catch(() => {});
+    }
+  }
+}
+
+function SectionHeader({ tr, title, action = "See all", onAction }) {
+  return (
+    <View style={s.sectionHeader}>
+      <Text style={s.sectionTitle}>{tr(title)}</Text>
+      {action && (
+        <TouchableOpacity onPress={onAction} style={s.sectionAction} activeOpacity={0.75}>
+          <Text style={s.sectionActionText}>{tr(action)}</Text>
+          <ChevronRight size={12} color={C.gold} strokeWidth={2.5} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function NewsTicker({ tr, active, onTap }) {
+  const x = useRef(new Animated.Value(0)).current;
+  const loopRef = useRef(null);
+  const [loopWidth, setLoopWidth] = useState(0);
+
+  useEffect(() => {
+    loopRef.current?.stop();
+    loopRef.current = null;
+    if (!loopWidth || !active) return undefined;
+    x.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(x, {
+        toValue: -loopWidth,
+        duration: 36000,
+        easing: (value) => value,
+        useNativeDriver: true,
+      }),
+    );
+    loopRef.current = loop;
+    loop.start();
+    return () => {
+      loop.stop();
+      if (loopRef.current === loop) loopRef.current = null;
+    };
+  }, [active, loopWidth, x]);
+
+  return (
+    <TouchableOpacity onPress={onTap} style={s.ticker} activeOpacity={0.85}>
+      <View style={s.tickerLabel}>
+        <PulsingDot size={5} color={C.gold} />
+        <Text style={s.tickerLabelText}>{tr("NEWS")}</Text>
+      </View>
+      <View style={s.tickerTrackWrap}>
+        <Animated.View style={[s.tickerTrack, { transform: [{ translateX: x }] }]}>
+          {[0, 1].map((rep) => (
+            <View
+              key={rep}
+              style={s.tickerGroup}
+              onLayout={rep === 0 ? (event) => setLoopWidth(event.nativeEvent.layout.width) : undefined}
+            >
+              {TICKER_ITEMS.map((item, index) => (
+                <View key={`${item}-${index}`} style={s.tickerItem}>
+                  <Text style={s.tickerText}>{tr(item)}</Text>
+                  <View style={s.tickerDot} />
+                </View>
+              ))}
+            </View>
+          ))}
+        </Animated.View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function WeatherWidget({ tr, onOpen }) {
+  return (
+    <TouchableOpacity onPress={onOpen} style={s.weatherChip} activeOpacity={0.85}>
+      <WeatherIcon main={WEATHER.conditionMain} size={28} />
+      <View>
+        <Text style={s.weatherTemp}>{WEATHER.temp}°</Text>
+        <Text style={s.weatherCondition}>{tr(WEATHER.condition)}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function WeatherIcon({ main, size = 34, color }) {
+  const props = { size, strokeWidth: 1.8 };
+  switch ((main || "").toLowerCase()) {
+    case "clear":
+      return <Sun {...props} color={color || C.gold} />;
+    case "rain":
+    case "drizzle":
+      return <CloudRain {...props} color={color || "#6B9BC0"} />;
+    case "thunderstorm":
+      return <CloudRain {...props} color={color || "#7B6BC0"} />;
+    case "snow":
+      return <Cloud {...props} color={color || "#B0D0E8"} />;
+    case "clouds":
+      return <Cloud {...props} color={color || "#B0A8C0"} />;
+    default:
+      return <Sun {...props} color={color || C.gold} />;
+  }
+}
+
+function QuoteOfTheDay({ tr }) {
+  const now = new Date();
+  const daySeed = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86400000;
+  const q = allQuotes[Math.floor(daySeed) % allQuotes.length];
+  return (
+    <View style={s.quoteWrap}>
+      <LinearGradient colors={["rgba(196,141,56,0.13)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.quoteCard}>
+        <View style={s.quoteBg}>
+          <Quote size={88} color={C.gold} strokeWidth={1.5} />
+        </View>
+        <View style={s.quoteLabel}>
+          <Sparkles size={12} color={C.gold} strokeWidth={2} />
+          <Text style={s.quoteLabelText}>{tr("Quote of the Day")}</Text>
+        </View>
+        <Text style={s.quoteText}>"{tr(q.text)}"</Text>
+        <Text style={s.quoteBy}>- {q.author}</Text>
+      </LinearGradient>
+    </View>
+  );
+}
+
+function HeroCard({ tr, onDirections, onDetails }) {
+  return (
+    <View style={s.heroWrap}>
+      <LinearGradient colors={["rgba(90,18,165,0.94)", "rgba(38,8,75,0.97)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroCard}>
+        <View style={s.heroGlow} />
+        <View style={s.heroTop}>
+          <View style={s.liveChip}>
+            <PulsingDot size={5} color="#F06565" />
+            <Text style={s.liveText}>{tr("LIVE NOW")}</Text>
+          </View>
+          <View style={s.heroLine} />
+          <Text style={s.todayText}>{tr("Today")}</Text>
+        </View>
+        <Text style={s.heroTitle}>{tr("Sunday Victory Service")}</Text>
+        <View style={s.heroMeta}>
+          <View style={s.metaRow}>
+            <Building2 size={11} color={C.gold} strokeWidth={1.8} />
+            <Text style={s.metaText}>{tr("Main Auditorium")} · {tr("Redemption City")}</Text>
+          </View>
+          <View style={s.metaRow}>
+            <Clock size={11} color={C.gold} strokeWidth={1.8} />
+            <Text style={s.metaText}>8:00 AM - 11:30 AM</Text>
+          </View>
+        </View>
+        <View style={s.heroBtns}>
+          <TouchableOpacity style={s.heroBtnPrimary} onPress={onDirections} activeOpacity={0.85}>
+            <Navigation size={12} color="#fff" strokeWidth={2.5} />
+            <Text style={s.heroBtnPrimaryText}>{tr("Get Directions")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.heroBtnSecondary} onPress={onDetails} activeOpacity={0.85}>
+            <Text style={s.heroBtnSecondaryText}>{tr("View Details")}</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+function SosBanner({ tr, onPress }) {
+  return (
+    <View style={s.sectionNoTop}>
+      <TouchableOpacity onPress={onPress} style={s.sosBanner} activeOpacity={0.85}>
+        <View style={s.sosIcon}>
+          <Siren size={20} color="#F06565" strokeWidth={1.8} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.sosTitle}>{tr("Emergency / SOS")}</Text>
+          <View style={s.sosNums}>
+            {[["199", "Ambulance"], ["112", "Police"], ["190", "Fire"], ["122", "Road"]].map(([num, label]) => (
+              <Text key={num} style={s.sosNum}>{num} <Text style={s.sosLabel}>{tr(label)}</Text> </Text>
+            ))}
+          </View>
+        </View>
+        <View style={s.sosRight}>
+          <PulsingDot size={8} color="#F06565" />
+          <ChevronRight size={14} color="#F06565" strokeWidth={2} />
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function EventsPreview({ tr, onSeeAll, onEventPress }) {
+  return (
+    <View style={s.eventsWrap}>
+      <View style={s.eventsHeaderPad}>
+        <SectionHeader tr={tr} title="Upcoming Events" action="See all" onAction={onSeeAll} />
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.eventScroller}>
+        {EVENTS.slice(0, 4).map((event) => (
+          <TouchableOpacity key={event.title} onPress={() => onEventPress(event.id)} style={s.eventCard} activeOpacity={0.85}>
+            <View style={[s.eventBadge, { borderColor: `${event.color}35` }]}>
+              <View style={[s.eventBadgeTop, { backgroundColor: `${event.color}28` }]}>
+                <Text style={s.eventBadgeDay}>{tr(event.day)}</Text>
+              </View>
+              <Text style={s.eventBadgeDate}>{event.date}</Text>
+            </View>
+            <View style={s.eventCopy}>
+              <View style={s.eventTagRow}>
+                <Text style={[s.eventTag, { color: event.color, backgroundColor: `${event.color}1E`, borderColor: `${event.color}30` }]}>{tr(event.tag)}</Text>
+                {event.live && <PulsingDot size={5} color="#F06565" />}
+              </View>
+              <Text style={s.eventTitle} numberOfLines={1}>{tr(event.title)}</Text>
+              <View style={s.eventMeta}>
+                <Clock size={9} color={C.gold} strokeWidth={2} />
+                <Text style={s.eventMetaText} numberOfLines={1}>{event.time} · {tr(event.venue)}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function Announcements({ tr, onLost }) {
+  const items = [
+    { Icon: Radio, color: "#7128CE", title: "Monthly Thanksgiving Service", body: "Join us Saturday at 6PM for a special celebration of praise and worship.", time: "2h ago" },
+    { Icon: AlertCircle, color: "#D44F4F", title: "Lost: Black Wallet - Gate B", body: "A black leather wallet was found at Gate B. Contact security desk to claim.", time: "4h ago", onPress: onLost },
+    { Icon: Navigation, color: "#C48D38", title: "Camp Road Closure", body: "Main Camp Road closed 10AM-2PM for event. Please use Alternative Route 2.", time: "1h ago" },
+  ];
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="News & Announcements" action={null} />
+      <View style={s.newsList}>
+        {items.map(({ Icon, color, title, body, time, onPress }) => (
+          <TouchableOpacity key={title} onPress={onPress} disabled={!onPress} style={s.newsCard} activeOpacity={0.85}>
+            <View style={[s.newsIcon, { backgroundColor: `${color}18`, borderColor: `${color}28` }]}>
+              <Icon size={15} color={color} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={s.newsTop}>
+                <Text style={s.newsTitle} numberOfLines={1}>{tr(title)}</Text>
+                <Text style={s.newsTime}>{time}</Text>
+              </View>
+              <Text style={s.newsBody}>{tr(body)}</Text>
+              {onPress && <Text style={s.newsLink}>{tr("View in Lost & Found")} →</Text>}
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CityTourCard({ tr, onPress }) {
+  const stops = [
+    { Icon: Building2, name: "Main Auditorium", color: "#6B35C0" },
+    { Icon: Leaf, name: "Prayer Mountain", color: "#4A8A5A" },
+    { Icon: Coffee, name: "Camp Restaurant", color: "#C48D38" },
+    { Icon: BookOpen, name: "Bookshop", color: "#9B5E3A" },
+  ];
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Redemption City Tour" action="Explore" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient colors={["rgba(42,127,171,0.18)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.tourCard}>
+          <View style={s.tourHeader}>
+            <View style={s.tourIcon}>
+              <Navigation size={17} color="#2A7FAB" strokeWidth={1.8} />
+            </View>
+            <View>
+              <Text style={s.tourTitle}>{tr("Guided City Tour")}</Text>
+              <Text style={s.tourSub}>{tr("8 stops")} · ~2 {tr("hours")} · {tr("Self-paced")}</Text>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tourStops}>
+            {stops.map(({ Icon, name, color }) => (
+              <View key={name} style={[s.tourStop, { backgroundColor: `${color}14`, borderColor: `${color}25` }]}>
+                <Icon size={11} color={color} strokeWidth={2} />
+                <Text style={s.tourStopText}>{tr(name)}</Text>
+              </View>
+            ))}
+            <View style={[s.tourStop, { backgroundColor: C.surfHi, borderColor: C.b }]}>
+              <Text style={s.tourMore}>+4 {tr("more")}</Text>
+            </View>
+          </ScrollView>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FindChurchCard({ tr, onPress }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Find a Church" action="See all" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} style={s.simpleCard} activeOpacity={0.85}>
+        <View style={[s.simpleIcon, { backgroundColor: "rgba(113,40,206,0.16)", borderColor: "rgba(113,40,206,0.28)" }]}>
+          <Building2 size={16} color={C.purpleL} strokeWidth={1.8} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.simpleTitle}>{tr("Nearest Parish")}</Text>
+          <Text style={s.simpleSub}>{tr("RCCG City of David Parish")} · 0.4km</Text>
+        </View>
+        <ChevronRight size={14} color={C.tm} strokeWidth={2} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function BusinessCard({ tr, onPress }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Business Directory" action="See all" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} style={s.bizCard} activeOpacity={0.85}>
+        <View style={s.bizIcon}>
+          <Utensils size={15} color={C.gold} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.bizName}>{tr("Camp Restaurant")}</Text>
+          <Text style={s.bizSub}>{tr("Open")} · 7AM-9PM · {tr("Tap to call")}</Text>
+        </View>
+        <View style={s.rating}>
+          <Star size={9} color={C.gold} fill={C.gold} strokeWidth={0} />
+          <Text style={s.ratingText}>4.3</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function AiCard({ tr, onPress }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="CityFlow AI" action="Open chat" onAction={onPress} />
+      <View style={s.aiCard}>
+        <View style={s.aiHeader}>
+          <View style={s.aiIcon}>
+            <Bot size={14} color={C.purpleL} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.aiName}>{tr("CityFlow AI")}</Text>
+            <View style={s.aiOnline}>
+              <PulsingDot size={5} color={C.green} />
+              <Text style={s.aiOnlineText}>{tr("Online")}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={s.aiBody}>
+          <View style={s.aiMsg}>
+            <View style={s.aiSmallIcon}>
+              <Bot size={11} color={C.purpleL} strokeWidth={2} />
+            </View>
+            <Text style={s.aiBubble}>{tr("Hi! I'm your CityFlow AI. Ask me anything about Redemption City.")}</Text>
+          </View>
+          <View style={s.aiChips}>
+            {["Find a restaurant", "Book a CityRide", "Emergency contacts"].map((q) => (
+              <TouchableOpacity key={q} onPress={onPress} style={s.aiChip} activeOpacity={0.8}>
+                <Text style={s.aiChipText}>{tr(q)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity onPress={onPress} style={s.aiInput} activeOpacity={0.85}>
+            <Text style={s.aiPlaceholder}>{tr("Ask me anything about the city...")}</Text>
+            <LinearGradient colors={[C.purple, "#5A18A8"]} style={s.aiSend}>
+              <Send size={12} color="#fff" strokeWidth={2} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function PictureCard({ tr, onPress }) {
+  const pic = GALLERY[0];
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Picture of the Day" action="View Gallery" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={s.pictureCard}>
+        <ImageBackground source={pic.file} resizeMode="cover" style={s.pictureImage}>
+          <LinearGradient colors={["rgba(8,1,26,0)", "rgba(8,1,26,0.85)"]} locations={[0.35, 1]} style={s.pictureOverlay} />
+          <View style={s.pictureCamera}>
+            <Camera size={16} color="#fff" strokeWidth={1.8} />
+          </View>
+          <View style={s.pictureCopy}>
+            <View style={s.pictureBadge}>
+              <Sunrise size={10} color={C.gold} strokeWidth={2} />
+              <Text style={s.pictureBadgeText}>{tr(pic.category || "Prayer Mountain")}</Text>
+            </View>
+            <Text style={s.pictureTitle}>{tr(pic.title)}</Text>
+            <Text style={s.pictureBy}>{tr("by")} {pic.id ? "@cityflow" : "@grace.o"}</Text>
+          </View>
+        </ImageBackground>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FactCard({ tr, onPress }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Did You Know?" action="See all" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient colors={["rgba(113,40,206,0.15)", "rgba(10,2,24,1)"]} style={s.factCard}>
+          <Text style={s.factEmoji}>{FUN_FACTS[0].icon}</Text>
+          <Text style={s.factCounter}>{tr("FACT 1 OF")} 8</Text>
+          <Text style={s.factText}>{tr(FUN_FACTS[0].fact)}</Text>
+          <View style={s.factDots}>
+            {Array.from({ length: 8 }).map((_, i) => <View key={i} style={[s.factDot, i === 0 && s.factDotActive]} />)}
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function QuizCard({ tr, onPress }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Know Your City Quiz" action="Play" onAction={onPress} />
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient colors={["rgba(196,141,56,0.13)", "rgba(10,2,24,1)"]} style={s.quizCard}>
+          <View style={s.quizTop}>
+            <View style={s.quizIcon}>
+              <Trophy size={21} color={C.gold} strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.quizTitle}>{tr("Know Your City")}</Text>
+              <Text style={s.quizSub}>{tr("Test your knowledge of Redemption City - history, places & more.")}</Text>
+            </View>
+            <LinearGradient colors={[C.gold, "#A87425"]} style={s.quizArrow}>
+              <ArrowRight size={14} color={C.bg} strokeWidth={2.5} />
+            </LinearGradient>
+          </View>
+          <View style={s.quizBadges}>
+            {[[FileText, "8 questions"], [Clock, "~3 min"], [Star, "Earn a badge"]].map(([Icon, label]) => (
+              <View key={label} style={s.quizBadge}>
+                <Icon size={11} color={C.gold} strokeWidth={2} />
+                <Text style={s.quizBadgeText}>{tr(label)}</Text>
+              </View>
+            ))}
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function DevotionalCard({ tr, onOpen }) {
+  return (
+    <View style={s.section}>
+      <SectionHeader tr={tr} title="Open Heaven Devotional" action="Read Full" onAction={onOpen} />
+      <TouchableOpacity onPress={onOpen} activeOpacity={0.86} style={s.devotionalCard}>
+        <View style={s.devotionalHead}>
+          <View style={s.devotionalIcon}>
+            <BookOpen size={17} color={C.purpleL} strokeWidth={1.8} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.devotionalKicker}>{tr(`${DEVOTIONAL.date}'s Devotional`)}</Text>
+            <Text style={s.devotionalTitle}>{tr(DEVOTIONAL.topic)}</Text>
+          </View>
+        </View>
+        <View style={s.devotionalBody}>
+          <View style={s.verseBox}>
+            <Text style={s.verseText}>"{tr(DEVOTIONAL.verse)}"</Text>
+            <Text style={s.verseRef}>{DEVOTIONAL.ref}</Text>
+          </View>
+          <Text style={s.devotionalText}>{tr(DEVOTIONAL.text)}</Text>
+          <View style={s.devotionalBottom}>
+            <View style={s.readingPill}>
+              <BookOpen size={12} color={C.gold} strokeWidth={2} />
+              <Text style={s.readingText}>{tr("Reading")}: {DEVOTIONAL.reading}</Text>
+            </View>
+            <View style={s.heartBtn}>
+              <ArrowRight size={15} color={C.gold} strokeWidth={2.2} />
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function OpenHeavensModal({ tr, visible, onClose }) {
+  const storeUrl = Platform.OS === "ios" ? OPEN_HEAVENS_LINKS.ios : OPEN_HEAVENS_LINKS.android;
+  const storeLabel = Platform.OS === "ios" ? "Open App Store" : "Open Play Store";
+
+  const openWebsite = () => {
+    onClose();
+    openExternalUrl(OPEN_HEAVENS_LINKS.website);
+  };
+
+  const openStore = () => {
+    onClose();
+    openExternalUrl(storeUrl, OPEN_HEAVENS_LINKS.website);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.modalOverlay} onPress={onClose} />
+      <View style={s.openHeavensSheet}>
+        <View style={s.sheetHandle} />
+        <View style={s.openHeavensHead}>
+          <View style={s.openHeavensIcon}>
+            <BookOpen size={20} color={C.purpleL} strokeWidth={1.8} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.openHeavensTitle}>{tr("Open Heaven Devotional")}</Text>
+            <Text style={s.openHeavensSub}>{tr("Read today's devotional or install the official app.")}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.75}>
+            <X size={15} color={C.ts} strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.openHeavensNotice}>
+          <Text style={s.openHeavensNoticeText}>
+            {tr("The official Open Heavens Devotional app is available on Google Play and the Apple App Store. eOpenHeavens also provides the official download links.")}
+          </Text>
+        </View>
+
+        <TouchableOpacity onPress={openWebsite} activeOpacity={0.86}>
+          <LinearGradient colors={[C.purple, "#5A18A8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.openHeavensPrimary}>
+            <BookOpen size={14} color="#fff" strokeWidth={2} />
+            <Text style={s.openHeavensPrimaryText}>{tr("Read on eOpenHeavens")}</Text>
+            <ArrowRight size={14} color="#fff" strokeWidth={2.4} />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={openStore} activeOpacity={0.86} style={s.openHeavensSecondary}>
+          <Text style={s.openHeavensSecondaryText}>{tr(storeLabel)}</Text>
+          <ArrowRight size={14} color={C.gold} strokeWidth={2.3} />
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+function WeatherModal({ tr, visible, onClose }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.modalOverlay} onPress={onClose} />
+      <View style={s.sheet}>
+        <View style={s.sheetHandle} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={s.weatherModalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.sheetTitle}>{tr("Weather")}</Text>
+              <View style={s.weatherLocationRow}>
+                <MapPin size={9} color={C.gold} strokeWidth={2.5} />
+                <Text style={s.weatherUpdated}>{tr(WEATHER.city)} · {tr("Updated just now")}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+              <X size={15} color={C.ts} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          <LinearGradient colors={["rgba(196,141,56,0.12)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.weatherCurrent}>
+            <WeatherIcon main={WEATHER.conditionMain} size={46} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.weatherBigTemp}>{WEATHER.temp}°</Text>
+              <Text style={s.weatherDesc}>{tr(WEATHER.desc)}</Text>
+            </View>
+            <View style={s.weatherFeels}>
+              <Thermometer size={11} color={C.gold} strokeWidth={2} />
+              <Text style={s.weatherFeelsText}>{tr("Feels")} {WEATHER.feels}°</Text>
+            </View>
+          </LinearGradient>
+
+          <View style={s.weatherStats}>
+            {[
+              [Droplets, "Humidity", WEATHER.humidity],
+              [Wind, "Wind", WEATHER.wind],
+              [Eye, "Visibility", WEATHER.visibility],
+            ].map(([Icon, label, value]) => (
+              <View key={label} style={s.weatherStat}>
+                <Icon size={14} color={C.ts} strokeWidth={1.8} />
+                <Text style={s.weatherStatValue}>{value}</Text>
+                <Text style={s.weatherStatLabel}>{tr(label)}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Text style={s.weatherSectionLabel}>{tr("Today")}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.weatherHourly}>
+            {WEATHER.hourly.map((hour, index) => (
+              <View key={`${hour.t}-${index}`} style={[s.weatherHour, index === 0 && s.weatherHourActive]}>
+                <Text style={[s.weatherHourTime, index === 0 && s.weatherHourTimeActive]}>{tr(hour.t)}</Text>
+                <WeatherIcon main={hour.main} size={17} />
+                <Text style={s.weatherHourTemp}>{hour.temp}°</Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          <Text style={s.weatherSectionLabel}>{tr("Next 4 Days")}</Text>
+          <View style={s.weatherDays}>
+            {WEATHER.days.map((day) => (
+              <View key={day.d} style={s.weatherDay}>
+                <Text style={s.weatherDayName}>{tr(day.d)}</Text>
+                <WeatherIcon main={day.main} size={16} />
+                <Text style={s.weatherDayHi}>{day.hi}°</Text>
+                <Text style={s.weatherDayLo}>{day.lo}°</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+function PulsingDot({ size = 6, color = "#F06565", style }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.25, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+  return <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity }, style]} />;
+}
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
-  scroll: { paddingBottom: 32 },
+  root: { flex: 1, backgroundColor: C.bg },
+  scroll: { paddingBottom: 30 },
+  header: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brand: { fontFamily: "Cinzel, serif", fontSize: 21, fontWeight: "600", color: C.tp, letterSpacing: 1.25 },
+  locRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  locTxt: { fontSize: 10, color: C.ts },
+  headerActions: { flexDirection: "row", gap: 10 },
+  headerBtn: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, alignItems: "center", justifyContent: "center" },
+  notifDot: { position: "absolute", top: 9, right: 9, width: 6, height: 6, borderRadius: 3, backgroundColor: C.gold, borderWidth: 1.5, borderColor: C.bg },
+  headerRule: { height: 1, marginHorizontal: 18, marginBottom: 4, backgroundColor: "rgba(255,255,255,0.055)" },
 
-  // ── Header ────────────────────────────────────────────────
-  header: {
-    paddingHorizontal: H_PAD,
-    paddingTop: IOS_TOP,
-    paddingBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: BG,
-  },
-  headerRule: {
-    height: 1,
-    marginHorizontal: H_PAD,
-    backgroundColor: "rgba(255,255,255,0.055)",
-    marginBottom: 4,
-  },
-  brand: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: TEXT_PRI,
-    letterSpacing: 3.5,
-  },
-  locRow: { flexDirection: "row", alignItems: "center", marginTop: 3 },
-  locTxt: { fontSize: 10, color: TEXT_MUT, letterSpacing: 0.3 },
-  headerActions: { flexDirection: "row", gap: 8 },
-  headerBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: ICON_RADIUS,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notifDot: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: GOLD,
-    borderWidth: 1.5,
-    borderColor: BG,
-  },
+  ticker: { flexDirection: "row", alignItems: "stretch", marginHorizontal: 18, marginTop: 10, marginBottom: 2, borderRadius: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, overflow: "hidden" },
+  tickerLabel: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "rgba(196,141,56,0.13)", borderRightWidth: 1, borderRightColor: C.b },
+  tickerLabelText: { fontSize: 8.5, fontWeight: "800", color: C.gold, letterSpacing: 1.1 },
+  tickerTrackWrap: { flex: 1, overflow: "hidden", justifyContent: "center" },
+  tickerTrack: { flexDirection: "row", alignItems: "center" },
+  tickerGroup: { flexDirection: "row", alignItems: "center" },
+  tickerItem: { flexDirection: "row", alignItems: "center" },
+  tickerText: { fontSize: 10.5, color: C.ts, paddingHorizontal: 13 },
+  tickerDot: { width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: C.gold, opacity: 0.7 },
 
-  // ── Greeting ──────────────────────────────────────────────
-  greetWrap: {
-    paddingHorizontal: H_PAD,
-    paddingTop: 18,
-    paddingBottom: 18,
-  },
-  greetRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  greetText: { flex: 1, paddingRight: 12 },
-  greetName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: TEXT_SEC,
-    letterSpacing: 0.2,
-  },
-  greetUser: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: TEXT_PRI,
-    lineHeight: 30,
-    letterSpacing: 0.2,
-  },
-  greetSub: { fontSize: 11.5, color: TEXT_MUT, marginTop: 4 },
+  greetingRow: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  greetingText: { flex: 1 },
+  greetingName: { fontSize: 14, fontWeight: "500", color: C.ts },
+  greetingUser: { fontSize: 24, fontWeight: "800", color: C.tp, lineHeight: 29 },
+  greetingSub: { fontSize: 11.5, color: C.tm, marginTop: 4 },
+  weatherChip: { flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 22, paddingHorizontal: 13, paddingVertical: 7 },
+  weatherTemp: { fontSize: 16, fontWeight: "700", color: C.tp, lineHeight: 17 },
+  weatherCondition: { fontSize: 10, color: C.ts, marginTop: 2 },
 
-  // ── Hero ──────────────────────────────────────────────────
-  heroWrap: { paddingHorizontal: H_PAD, marginBottom: SECTION_MB },
-  heroCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "rgba(110,50,190,0.32)",
-    padding: CARD_PAD,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 14,
-  },
-  liveChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(215,55,55,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(225,75,75,0.28)",
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  liveTxt: { fontSize: 9, fontWeight: "700", color: "#F06565", letterSpacing: 1.5 },
-  heroDivLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
-  heroDateTxt: { fontSize: 10, color: TEXT_MUT },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: TEXT_PRI,
-    lineHeight: 26,
-    marginBottom: 10,
-    letterSpacing: 0.2,
-  },
+  quoteWrap: { paddingHorizontal: 18, marginBottom: 22 },
+  quoteCard: { borderRadius: 22, borderWidth: 1, borderColor: "rgba(196,141,56,0.22)", padding: 18, overflow: "hidden" },
+  quoteBg: { position: "absolute", top: -18, right: -6, opacity: 0.12 },
+  quoteLabel: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
+  quoteLabelText: { fontSize: 9, fontWeight: "700", color: C.gold, letterSpacing: 1.6, textTransform: "uppercase" },
+  quoteText: { fontSize: 15, color: C.tp, fontWeight: "600", lineHeight: 23, marginBottom: 10 },
+  quoteBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
+  quoteBy: { flex: 1, fontSize: 11.5, color: C.gold, fontWeight: "600" },
+  quoteDots: { flexDirection: "row", gap: 4 },
+  quoteDot: { width: 4.5, height: 4.5, borderRadius: 3, backgroundColor: C.tm },
+  quoteDotActive: { backgroundColor: C.gold },
+
+  heroWrap: { paddingHorizontal: 18, marginBottom: 22 },
+  heroCard: { borderRadius: 26, borderWidth: 1, borderColor: "rgba(110,50,190,0.3)", padding: 20, overflow: "hidden" },
+  heroGlow: { position: "absolute", top: -50, right: -30, width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(105,35,200,0.14)" },
+  heroTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
+  liveChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(215,55,55,0.18)", borderWidth: 1, borderColor: "rgba(225,75,75,0.28)", borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3 },
+  liveText: { fontSize: 9, fontWeight: "700", color: "#F06565", letterSpacing: 1.1 },
+  heroLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.06)" },
+  todayText: { fontSize: 10, color: C.ts },
+  heroTitle: { fontSize: 19, fontWeight: "700", color: C.tp, lineHeight: 25, marginBottom: 8 },
   heroMeta: { gap: 5, marginBottom: 18 },
-  heroMetaRow: { flexDirection: "row", alignItems: "center" },
-  heroMetaTxt: { fontSize: 11.5, color: TEXT_SEC },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metaText: { fontSize: 11.5, color: C.ts },
   heroBtns: { flexDirection: "row", gap: 10 },
-  heroBtn1: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: PURPLE,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroBtnTxt1: { fontSize: 12.5, fontWeight: "700", color: "#fff" },
-  heroBtn2: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroBtnTxt2: { fontSize: 12.5, fontWeight: "600", color: TEXT_PRI },
+  heroBtnPrimary: { flex: 1, paddingVertical: 11, borderRadius: 13, backgroundColor: C.purple, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  heroBtnPrimaryText: { fontSize: 12, fontWeight: "600", color: "#fff" },
+  heroBtnSecondary: { flex: 1, paddingVertical: 11, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: C.b, alignItems: "center", justifyContent: "center" },
+  heroBtnSecondaryText: { fontSize: 12, fontWeight: "600", color: C.tp },
 
-  // ── SOS Banner ────────────────────────────────────────────
-  sosBanner: {
-    marginHorizontal: H_PAD,
-    marginBottom: SECTION_MB,
-    backgroundColor: "rgba(212,79,79,0.09)",
-    borderWidth: 1,
-    borderColor: "rgba(212,79,79,0.28)",
-    borderRadius: CARD_RADIUS,
-    padding: CARD_PAD,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  sosIcon: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
-    backgroundColor: "rgba(212,79,79,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(212,79,79,0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sosInfo: { flex: 1 },
-  sosTitle: { fontSize: 13, fontWeight: "700", color: "#F06565", marginBottom: 3 },
-  sosNumbers: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
-  sosNum: { fontSize: 10, color: "rgba(240,101,101,0.7)", fontWeight: "600" },
-  sosLabel: { fontWeight: "400", color: TEXT_MUT },
+  section: { paddingHorizontal: 18, marginBottom: 22 },
+  sectionNoTop: { paddingHorizontal: 18, marginBottom: 22 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 15, fontWeight: "700", color: C.tp },
+  sectionAction: { flexDirection: "row", alignItems: "center", gap: 2 },
+  sectionActionText: { fontSize: 11, color: C.gold, fontWeight: "500" },
 
-  // ── Sections ──────────────────────────────────────────────
-  section: { paddingHorizontal: H_PAD, marginBottom: SECTION_MB },
+  sosBanner: { backgroundColor: "rgba(212,79,79,0.1)", borderWidth: 1, borderColor: "rgba(212,79,79,0.32)", borderRadius: 20, padding: 14, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 },
+  sosIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "rgba(212,79,79,0.18)", borderWidth: 1, borderColor: "rgba(212,79,79,0.3)", alignItems: "center", justifyContent: "center" },
+  sosTitle: { fontSize: 13.5, fontWeight: "700", color: "#F06565", marginBottom: 3 },
+  sosNums: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  sosNum: { fontSize: 10, color: "rgba(240,101,101,0.75)", fontWeight: "600" },
+  sosLabel: { color: C.tm, fontWeight: "400" },
+  sosRight: { alignItems: "center", gap: 6 },
 
-  // ── Actions ───────────────────────────────────────────────
   actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 14 },
-  actionCard: {
-    width: "47%",
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: CARD_RADIUS,
-    padding: 16,
-  },
-  actionIcon: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
-    marginBottom: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  actionLabel: { fontSize: 13.5, fontWeight: "700", color: TEXT_PRI, marginBottom: 2 },
-  actionSub: { fontSize: 11, color: TEXT_SEC },
+  actionCard: { width: "47%", backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 20, padding: 14, paddingVertical: 16 },
+  actionIcon: { width: 38, height: 38, borderRadius: 12, marginBottom: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  actionLabel: { fontSize: 14, fontWeight: "600", color: C.tp, marginBottom: 2 },
+  actionSub: { fontSize: 11, color: C.ts },
 
-  // ── AI ────────────────────────────────────────────────────
-  aiCard: {
-    marginTop: 12,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: CARD_RADIUS,
-    overflow: "hidden",
-  },
-  aiHeader: {
-    padding: CARD_PAD,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  aiAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: "rgba(113,40,206,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(113,40,206,0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  aiName: { fontSize: 12, fontWeight: "700", color: TEXT_PRI },
-  aiStatusRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  aiStatus: { fontSize: 9.5, color: "#3DAA6A", fontWeight: "600" },
-  aiMsg: {
-    padding: CARD_PAD,
-    paddingBottom: 0,
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 10,
-  },
-  aiMsgAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 7,
-    backgroundColor: "rgba(113,40,206,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(113,40,206,0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  aiBubble: {
-    flex: 1,
-    padding: 9,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    borderTopLeftRadius: 4,
-  },
-  aiBubbleTxt: { fontSize: 11.5, color: TEXT_PRI, lineHeight: 17 },
-  aiChips: {
-    paddingHorizontal: CARD_PAD,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 10,
-  },
-  aiChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-  },
-  aiChipTxt: { fontSize: 10.5, color: TEXT_PRI, fontWeight: "500" },
-  aiInputRow: {
-    margin: CARD_PAD,
-    marginTop: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 13,
-    padding: 9,
-    paddingLeft: 12,
-  },
-  aiPlaceholder: { flex: 1, fontSize: 11.5, color: TEXT_MUT },
-  aiSendBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    backgroundColor: PURPLE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  eventsWrap: { marginBottom: 22 },
+  eventsHeaderPad: { paddingHorizontal: 18, marginBottom: 12 },
+  eventScroller: { paddingHorizontal: 18, gap: 12 },
+  eventCard: { width: 208, flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 18, padding: 13, paddingHorizontal: 14 },
+  eventBadge: { width: 46, borderRadius: 12, overflow: "hidden", borderWidth: 1 },
+  eventBadgeTop: { paddingVertical: 3, alignItems: "center" },
+  eventBadgeDay: { fontSize: 8.5, fontWeight: "700", color: C.tp, letterSpacing: 0.9 },
+  eventBadgeDate: { fontSize: 17, fontWeight: "800", color: C.tp, paddingVertical: 4, textAlign: "center" },
+  eventCopy: { flex: 1, minWidth: 0 },
+  eventTagRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 5 },
+  eventTag: { fontSize: 8.5, fontWeight: "700", borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, letterSpacing: 0.4 },
+  eventTitle: { fontSize: 13, fontWeight: "700", color: C.tp, marginBottom: 4 },
+  eventMeta: { flexDirection: "row", alignItems: "center", gap: 5 },
+  eventMetaText: { fontSize: 10, color: C.ts, flex: 1 },
 
-  // ── Tour ──────────────────────────────────────────────────
-  tourCard: {
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: "rgba(42,127,171,0.3)",
-    padding: CARD_PAD,
-    marginTop: 12,
-  },
-  tourHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  },
-  tourIcon: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    backgroundColor: "rgba(42,127,171,0.18)",
-    borderColor: "rgba(42,127,171,0.3)",
-  },
-  tourTitle: { fontSize: 13.5, fontWeight: "700", color: TEXT_PRI },
-  tourSub: { fontSize: 10.5, color: TEXT_SEC },
-  tourStops: { flexDirection: "row" },
-  tourStop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 8,
-  },
-  tourStopTxt: { fontSize: 10.5, color: TEXT_PRI, fontWeight: "500" },
+  newsList: { gap: 10, marginTop: 14 },
+  newsCard: { backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 18, padding: 14, paddingHorizontal: 15, flexDirection: "row", gap: 12 },
+  newsIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  newsTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
+  newsTitle: { flex: 1, fontSize: 13, fontWeight: "600", color: C.tp, marginRight: 8 },
+  newsTime: { fontSize: 10, color: C.tm },
+  newsBody: { fontSize: 11.5, color: C.ts, lineHeight: 18 },
+  newsLink: { fontSize: 11, color: C.gold, fontWeight: "500", marginTop: 5 },
 
-  // ── Biz ───────────────────────────────────────────────────
-  bizFeatured: {
-    marginTop: 12,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: CARD_PAD,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  bizIcon: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
-    backgroundColor: "rgba(196,141,56,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(196,141,56,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bizName: { fontSize: 13, fontWeight: "600", color: TEXT_PRI, marginBottom: 1 },
-  bizSub: { fontSize: 10.5, color: TEXT_SEC },
-  ratingRow: { flexDirection: "row", alignItems: "center" },
-  ratingTxt: { fontSize: 10.5, color: GOLD, fontWeight: "600" },
+  tourCard: { marginTop: 12, borderWidth: 1, borderColor: "rgba(42,127,171,0.3)", borderRadius: 22, padding: 16, paddingVertical: 18 },
+  tourHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+  tourIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(42,127,171,0.18)", borderWidth: 1, borderColor: "rgba(42,127,171,0.3)", alignItems: "center", justifyContent: "center" },
+  tourTitle: { fontSize: 13.5, fontWeight: "700", color: C.tp },
+  tourSub: { fontSize: 10.5, color: C.ts },
+  tourStops: { gap: 8 },
+  tourStop: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  tourStopText: { fontSize: 10.5, color: C.tp, fontWeight: "500" },
+  tourMore: { fontSize: 10.5, color: C.ts },
 
-  // ── Fact ──────────────────────────────────────────────────
-  factCard: {
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: "rgba(113,40,206,0.28)",
-    padding: CARD_PAD,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  factEmoji: { fontSize: 38, marginBottom: 10 },
-  factCounter: {
-    fontSize: 8.5,
-    fontWeight: "700",
-    color: GOLD,
-    letterSpacing: 3,
-    marginBottom: 8,
-  },
-  factTxt: {
-    fontSize: 13,
-    color: TEXT_PRI,
-    lineHeight: 21,
-    fontWeight: "500",
-    textAlign: "center",
-    marginBottom: 16,
-  },
+  simpleCard: { marginTop: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 16, padding: 13, flexDirection: "row", alignItems: "center", gap: 10 },
+  simpleIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  simpleTitle: { fontSize: 12.5, fontWeight: "600", color: C.tp },
+  simpleSub: { fontSize: 10.5, color: C.ts, marginTop: 1 },
+
+  bizCard: { marginTop: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 16, padding: 12, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
+  bizIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: "rgba(196,141,56,0.15)", borderWidth: 1, borderColor: "rgba(196,141,56,0.25)", alignItems: "center", justifyContent: "center" },
+  bizName: { fontSize: 12.5, fontWeight: "600", color: C.tp, marginBottom: 1 },
+  bizSub: { fontSize: 10.5, color: C.ts },
+  rating: { flexDirection: "row", alignItems: "center", gap: 3 },
+  ratingText: { fontSize: 10.5, color: C.gold, fontWeight: "600" },
+
+  aiCard: { marginTop: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 22, overflow: "hidden" },
+  aiHeader: { padding: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.b, flexDirection: "row", alignItems: "center", gap: 10 },
+  aiIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: "rgba(113,40,206,0.18)", borderWidth: 1, borderColor: "rgba(113,40,206,0.28)", alignItems: "center", justifyContent: "center" },
+  aiName: { fontSize: 12, fontWeight: "700", color: C.tp },
+  aiOnline: { flexDirection: "row", alignItems: "center", gap: 4 },
+  aiOnlineText: { fontSize: 9.5, color: C.green, fontWeight: "600" },
+  aiBody: { padding: 12, paddingHorizontal: 14 },
+  aiMsg: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  aiSmallIcon: { width: 24, height: 24, borderRadius: 7, backgroundColor: "rgba(113,40,206,0.18)", borderWidth: 1, borderColor: "rgba(113,40,206,0.28)", alignItems: "center", justifyContent: "center", marginTop: 2 },
+  aiBubble: { maxWidth: "80%", padding: 9, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: C.b, borderTopLeftRadius: 4, borderTopRightRadius: 14, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, fontSize: 11.5, color: C.tp, lineHeight: 18 },
+  aiChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  aiChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1, borderColor: C.b, backgroundColor: C.surfHi },
+  aiChipText: { fontSize: 10.5, color: C.tp, fontWeight: "500" },
+  aiInput: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: C.b, borderRadius: 13, padding: 9, paddingLeft: 12 },
+  aiPlaceholder: { flex: 1, fontSize: 11.5, color: C.tm },
+  aiSend: { width: 28, height: 28, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+
+  pictureCard: { marginTop: 12, borderRadius: 22, borderWidth: 1, borderColor: C.b, overflow: "hidden", height: 188 },
+  pictureImage: { flex: 1 },
+  pictureOverlay: { ...StyleSheet.absoluteFillObject },
+  pictureCamera: { position: "absolute", top: 12, right: 12, opacity: 0.55 },
+  pictureCopy: { position: "absolute", left: 14, right: 14, bottom: 13 },
+  pictureBadge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(8,1,26,0.55)", borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3, marginBottom: 8 },
+  pictureBadgeText: { fontSize: 9.5, color: "#fff", fontWeight: "600" },
+  pictureTitle: { fontSize: 15, fontWeight: "700", color: "#fff", marginBottom: 2 },
+  pictureBy: { fontSize: 10.5, color: "rgba(255,255,255,0.7)" },
+
+  factCard: { marginTop: 12, borderWidth: 1, borderColor: "rgba(113,40,206,0.28)", borderRadius: 22, padding: 20, paddingHorizontal: 18, alignItems: "center", overflow: "hidden" },
+  factEmoji: { fontSize: 36, marginBottom: 10 },
+  factCounter: { fontSize: 8.5, fontWeight: "700", color: C.gold, letterSpacing: 1.8, marginBottom: 8 },
+  factText: { fontSize: 12.5, color: C.tp, lineHeight: 21, fontWeight: "500", textAlign: "center", marginBottom: 16 },
   factDots: { flexDirection: "row", gap: 5 },
-  factDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: TEXT_MUT },
+  factDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.tm },
+  factDotActive: { backgroundColor: C.gold },
 
-  // ── Quiz ──────────────────────────────────────────────────
-  quizCard: {
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: "rgba(196,141,56,0.25)",
-    padding: CARD_PAD,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginTop: 12,
-  },
-  quizEmoji: { fontSize: 44 },
-  quizTitle: { fontSize: 14, fontWeight: "700", color: TEXT_PRI, marginBottom: 4 },
-  quizSub: { fontSize: 11, color: TEXT_SEC, lineHeight: 16, marginBottom: 10 },
+  quizCard: { marginTop: 12, borderWidth: 1, borderColor: "rgba(196,141,56,0.25)", borderRadius: 22, padding: 16, paddingVertical: 17, overflow: "hidden" },
+  quizTop: { flexDirection: "row", alignItems: "center", gap: 13, marginBottom: 14 },
+  quizIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: "rgba(196,141,56,0.16)", borderWidth: 1, borderColor: "rgba(196,141,56,0.32)", alignItems: "center", justifyContent: "center" },
+  quizTitle: { fontSize: 14.5, fontWeight: "700", color: C.tp },
+  quizSub: { fontSize: 11, color: C.ts, marginTop: 3, lineHeight: 17 },
+  quizArrow: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   quizBadges: { flexDirection: "row", gap: 8 },
-  quizBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: SURFACE,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  quizBadgeTxt: { fontSize: 9.5, color: TEXT_SEC },
+  quizBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.surfHi, borderWidth: 1, borderColor: C.b, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 6 },
+  quizBadgeText: { fontSize: 10, color: C.tp, fontWeight: "500" },
 
-  // ── Updates ───────────────────────────────────────────────
-  updatesList: { gap: 9, marginTop: 14 },
-  updateCard: {
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 18,
-    padding: CARD_PAD,
-    flexDirection: "row",
-    gap: 12,
-  },
-  updateIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    flexShrink: 0,
-  },
-  updateTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  updateTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: TEXT_PRI,
-    flex: 1,
-    marginRight: 8,
-    lineHeight: 18,
-  },
-  updateTime: { fontSize: 10, color: TEXT_MUT },
-  updateBody: { fontSize: 11.5, color: TEXT_SEC, lineHeight: 16 },
+  devotionalCard: { marginTop: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 22, overflow: "hidden" },
+  devotionalHead: { paddingHorizontal: 16, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: C.b, flexDirection: "row", alignItems: "center", gap: 11 },
+  devotionalIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(113,40,206,0.18)", borderWidth: 1, borderColor: "rgba(113,40,206,0.28)", alignItems: "center", justifyContent: "center" },
+  devotionalKicker: { fontSize: 8.5, fontWeight: "700", color: C.gold, letterSpacing: 1.36, textTransform: "uppercase" },
+  devotionalTitle: { fontSize: 14.5, fontWeight: "700", color: C.tp, marginTop: 2 },
+  devotionalBody: { paddingHorizontal: 16, paddingVertical: 14 },
+  verseBox: { backgroundColor: "rgba(196,141,56,0.08)", borderWidth: 1, borderColor: "rgba(196,141,56,0.2)", borderRadius: 13, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
+  verseText: { fontSize: 12, color: C.tp, fontStyle: "italic", lineHeight: 19, marginBottom: 5 },
+  verseRef: { fontSize: 10.5, color: C.gold, fontWeight: "600" },
+  devotionalText: { fontSize: 12, color: C.ts, lineHeight: 20, marginBottom: 13 },
+  devotionalBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
+  readingPill: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.surfHi, borderWidth: 1, borderColor: C.b, borderRadius: 11, paddingHorizontal: 12, paddingVertical: 9 },
+  readingText: { fontSize: 11, color: C.tp, fontWeight: "500" },
+  heartBtn: { width: 38, height: 38, borderRadius: 11, backgroundColor: C.surfHi, borderWidth: 1, borderColor: C.b, alignItems: "center", justifyContent: "center" },
 
-  // ── Modal ─────────────────────────────────────────────────
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  notificationPanel: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#0F0A1E",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: "80%",
-  },
-  panelHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
-  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(2,0,8,0.62)" },
+  openHeavensSheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "#0F0A1E", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderBottomWidth: 0, borderColor: C.bHi, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 30 },
+  openHeavensHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  openHeavensIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: "rgba(113,40,206,0.18)", borderWidth: 1, borderColor: "rgba(113,40,206,0.3)", alignItems: "center", justifyContent: "center" },
+  openHeavensTitle: { fontSize: 16, fontWeight: "800", color: C.tp },
+  openHeavensSub: { fontSize: 11.5, color: C.ts, lineHeight: 17, marginTop: 3 },
+  openHeavensNotice: { backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
+  openHeavensNoticeText: { fontSize: 12, lineHeight: 19, color: C.ts },
+  openHeavensPrimary: { height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, marginBottom: 9 },
+  openHeavensPrimaryText: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  openHeavensSecondary: { height: 46, borderRadius: 15, borderWidth: 1, borderColor: "rgba(196,141,56,0.28)", backgroundColor: "rgba(196,141,56,0.08)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  openHeavensSecondaryText: { fontSize: 12.5, fontWeight: "800", color: C.gold },
+  sheet: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "78%", backgroundColor: "#0F0A1E", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderBottomWidth: 0, borderColor: C.bHi, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", alignSelf: "center", marginBottom: 14 },
+  sheetTitle: { fontSize: 16, fontWeight: "700", color: C.tp, marginBottom: 12 },
+  sheetRow: { backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14, padding: 12, marginBottom: 9 },
+  sheetText: { fontSize: 12, color: C.ts, lineHeight: 18 },
+  weatherModalHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
+  weatherLocationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: -10 },
+  weatherUpdated: { fontSize: 10.5, color: C.ts },
+  closeBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, alignItems: "center", justifyContent: "center" },
+  weatherCurrent: { borderRadius: 20, borderWidth: 1, borderColor: "rgba(196,141,56,0.22)", paddingHorizontal: 16, paddingVertical: 18, flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 14 },
+  weatherBigTemp: { fontSize: 36, fontWeight: "800", color: C.tp, lineHeight: 36 },
+  weatherDesc: { fontSize: 11.5, color: C.ts, marginTop: 5 },
+  weatherFeels: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.surfHi, borderWidth: 1, borderColor: C.b, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, alignSelf: "flex-start" },
+  weatherFeelsText: { fontSize: 10, color: C.tp, fontWeight: "500" },
+  weatherStats: { flexDirection: "row", gap: 9, marginBottom: 14 },
+  weatherStat: { flex: 1, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 11, alignItems: "center" },
+  weatherStatValue: { fontSize: 12.5, fontWeight: "700", color: C.tp, marginTop: 6 },
+  weatherStatLabel: { fontSize: 9, color: C.tm, marginTop: 2 },
+  weatherSectionLabel: { fontSize: 10.5, fontWeight: "700", color: C.ts, letterSpacing: 0.84, textTransform: "uppercase", marginBottom: 9 },
+  weatherHourly: { gap: 8, marginBottom: 16 },
+  weatherHour: { width: 54, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14, paddingVertical: 10, alignItems: "center", gap: 7 },
+  weatherHourActive: { backgroundColor: "rgba(113,40,206,0.12)", borderColor: "rgba(113,40,206,0.3)" },
+  weatherHourTime: { fontSize: 9.5, color: C.ts, fontWeight: "500" },
+  weatherHourTimeActive: { color: C.tp, fontWeight: "700" },
+  weatherHourTemp: { fontSize: 11.5, fontWeight: "700", color: C.tp },
+  weatherDays: { gap: 8 },
+  weatherDay: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11 },
+  weatherDayName: { flex: 1, fontSize: 12.5, fontWeight: "600", color: C.tp },
+  weatherDayHi: { width: 30, textAlign: "right", fontSize: 12, fontWeight: "700", color: C.tp },
+  weatherDayLo: { width: 26, textAlign: "right", fontSize: 12, color: C.tm },
 });

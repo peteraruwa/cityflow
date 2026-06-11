@@ -3,12 +3,13 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Alert,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth } from '../../shared/config/firebase';
+import { createUserWithEmailAndPassword, fetchSignInMethodsForEmail, updateProfile } from 'firebase/auth';
+import { collection, doc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
+import { auth, db } from '../../shared/config/firebase';
 
 export default function SignUpScreen({ onSignUp, onBackToLogin }) {
   const [firstName, setFirstName]         = useState('');
@@ -20,37 +21,60 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [focused, setFocused]             = useState(null);
   const [loading, setLoading]             = useState(false);
+  const [message, setMessage]             = useState('');
 
   async function handleSignUp() {
+    setMessage('');
+    const cleanFirstName = firstName.trim() || 'CityFlow';
+    const cleanLastName = lastName.trim() || 'Guest';
     const cleanEmail = email.trim().toLowerCase();
+    const displayName = `${cleanFirstName} ${cleanLastName}`;
 
-    if (!firstName.trim() || !lastName.trim() || !cleanEmail || !pass || !confirmPass) {
-      Alert.alert('Missing fields', 'Please fill in all fields.');
+    if (!cleanEmail) {
+      setMessage('Please enter an email address to create your account.');
+      return;
+    }
+    if (!pass || pass.length < 6) {
+      setMessage('Please choose a password with at least 6 characters.');
       return;
     }
     if (pass !== confirmPass) {
-      Alert.alert("Passwords don't match", 'Please make sure both passwords are identical.');
-      return;
-    }
-    if (pass.length < 6) {
-      Alert.alert('Password too short', 'Password must be at least 6 characters.');
+      setMessage('Please make sure both password fields match.');
       return;
     }
 
     setLoading(true);
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-      await updateProfile(user, {
-        displayName: `${firstName.trim()} ${lastName.trim()}`,
+      const [methods, existingUsers] = await Promise.all([
+        fetchSignInMethodsForEmail(auth, cleanEmail),
+        getDocs(query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1))),
+      ]);
+
+      if (methods.length > 0 || !existingUsers.empty) {
+        setMessage('This email is already used. Please sign in or use a different email address.');
+        return;
+      }
+
+      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+      await updateProfile(credential.user, { displayName });
+      await setDoc(doc(db, 'users', credential.user.uid), {
+        uid: credential.user.uid,
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        displayName,
+        email: cleanEmail,
+        createdAt: new Date().toISOString(),
       });
-      onSignUp(user); // onAuthStateChanged in App.js handles navigation
+      onSignUp({
+        uid: credential.user.uid,
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        displayName,
+        email: cleanEmail,
+      });
     } catch (error) {
-      const messages = {
-        'auth/email-already-in-use': 'This email is already registered. Please sign in instead.',
-        'auth/invalid-email':        'Please enter a valid email address.',
-        'auth/weak-password':        'Password is too weak. Use at least 8 characters with numbers.',
-      };
-      Alert.alert('Sign up failed', messages[error.code] ?? 'Something went wrong. Please try again.');
+      console.warn('Firebase sign-up failed:', error?.code || error?.message);
+      setMessage(getSignUpErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -192,6 +216,12 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
           <Text style={s.errorHint}>Passwords do not match</Text>
         )}
 
+        {message ? (
+          <View style={s.messageBox}>
+            <Text style={s.messageText}>{message}</Text>
+          </View>
+        ) : null}
+
         {/* Create account button */}
         <TouchableOpacity
           onPress={handleSignUp}
@@ -229,6 +259,23 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
 
 function FieldLabel({ label }) {
   return <Text style={s.fieldLabel}>{label}</Text>;
+}
+
+function getSignUpErrorMessage(error) {
+  switch (error?.code) {
+    case 'auth/email-already-in-use':
+      return 'This email is already used. Please sign in or use a different email address.';
+    case 'auth/invalid-email':
+      return 'That email address does not look quite right. Please check it and try again.';
+    case 'auth/weak-password':
+      return 'Please choose a stronger password with at least 6 characters.';
+    case 'auth/network-request-failed':
+      return 'Network connection problem. Please check your internet and try again.';
+    case 'permission-denied':
+      return 'We could not confirm that email right now. Please try again in a moment.';
+    default:
+      return 'We could not create your account right now. Please check your details and try again.';
+  }
 }
 
 /* ── Design tokens ─────────────────────────── */
@@ -315,6 +362,22 @@ const s = StyleSheet.create({
     marginTop: -10,
     marginBottom: 14,
     marginLeft: 2,
+  },
+
+  messageBox: {
+    backgroundColor: 'rgba(220,53,69,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(220,53,69,0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    marginBottom: 14,
+  },
+  messageText: {
+    color: '#F2A8A8',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
   },
 
   /* Button */

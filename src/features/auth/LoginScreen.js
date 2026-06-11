@@ -3,44 +3,88 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Alert,
+  Platform, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../shared/config/firebase';
 import SignUpScreen from './SignUpScreen';
+import { usePrefs } from '../../shared/context/PrefsContext';
+import { auth } from '../../shared/config/firebase';
+
+const LOGIN_COPY = {
+  en: {
+    welcomeBack: 'Welcome back',
+    subtitle: 'Sign in to your account to continue',
+    emailAddress: 'Email Address',
+    emailPlaceholder: 'you@example.com',
+    password: 'Password',
+    passwordPlaceholder: 'Enter your password',
+    forgotPassword: 'Forgot password?',
+    signIn: 'Sign In',
+    or: 'OR',
+    noAccount: "Don't have an account? ",
+    signUp: 'Sign up',
+  },
+  fr: {
+    welcomeBack: 'Bon retour',
+    subtitle: 'Connectez-vous à votre compte pour continuer',
+    emailAddress: 'Adresse e-mail',
+    emailPlaceholder: 'vous@exemple.com',
+    password: 'Mot de passe',
+    passwordPlaceholder: 'Entrez votre mot de passe',
+    forgotPassword: 'Mot de passe oublié ?',
+    signIn: 'Se connecter',
+    or: 'OU',
+    noAccount: "Vous n'avez pas de compte ? ",
+    signUp: "S'inscrire",
+  },
+  yo: {
+    welcomeBack: 'Kaabo pada',
+    subtitle: 'Wole si akanti re lati tesiwaju',
+    emailAddress: 'Adiresi imeeli',
+    emailPlaceholder: 'iwọ@apere.com',
+    password: 'Oro igbaniwole',
+    passwordPlaceholder: 'Te oro igbaniwole re',
+    forgotPassword: 'Se o gbagbe oro igbaniwole?',
+    signIn: 'Wole',
+    or: 'TABI',
+    noAccount: 'Se o ko ni akanti? ',
+    signUp: 'Forukosile',
+  },
+};
 
 export default function LoginScreen({ onLogin }) {
+  const { language } = usePrefs();
   const [email, setEmail]       = useState('');
   const [pass, setPass]         = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [focused, setFocused]   = useState(null);
   const [loading, setLoading]   = useState(false);
+  const [message, setMessage]   = useState('');
   const [showSignUp, setShowSignUp] = useState(false);
+  const copy = LOGIN_COPY[language] || LOGIN_COPY.en;
 
   async function handleLogin() {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPass  = pass.trim();
+    const loginEmail = email.trim().toLowerCase();
+    setMessage('');
 
-    if (!cleanEmail || !cleanPass) {
-      Alert.alert('Missing fields', 'Please enter your email and password.');
+    if (!loginEmail || !pass) {
+      setMessage('Please enter your email address and password to sign in.');
       return;
     }
 
     setLoading(true);
     try {
-      const { user } = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-      onLogin(user); // onAuthStateChanged in App.js handles navigation
+      const credential = await signInWithEmailAndPassword(auth, loginEmail, pass);
+      onLogin({
+        uid: credential.user.uid,
+        email: credential.user.email,
+        displayName: credential.user.displayName,
+      });
     } catch (error) {
-      const messages = {
-        'auth/user-not-found':    'No account found with this email.',
-        'auth/wrong-password':    'Incorrect password. Please try again.',
-        'auth/invalid-email':     'Please enter a valid email address.',
-        'auth/invalid-credential':'Invalid email or password.',
-        'auth/too-many-requests': 'Too many failed attempts. Please try again later.',
-      };
-      Alert.alert('Sign in failed', messages[error.code] ?? 'Something went wrong. Please try again.');
+      console.warn('Firebase login failed:', error?.code || error?.message);
+      setMessage(getLoginErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -62,14 +106,16 @@ export default function LoginScreen({ onLogin }) {
       >
         {/* Brand header */}
         <View style={s.brandRow}>
-          <View style={s.brandDiamond} />
+          <View style={s.brandLogoFrame}>
+            <Image source={require('../../../assets/rcog_logo.png')} style={s.brandLogo} resizeMode="contain" />
+          </View>
           <Text style={s.brandText}>CityFlow</Text>
         </View>
 
         {/* Title block */}
         <View style={s.titleBlock}>
-          <Text style={s.title}>Welcome back</Text>
-          <Text style={s.subtitle}>Sign in to your account to continue</Text>
+          <Text style={s.title}>{copy.welcomeBack}</Text>
+          <Text style={s.subtitle}>{copy.subtitle}</Text>
         </View>
 
         {/* Gold divider */}
@@ -80,12 +126,12 @@ export default function LoginScreen({ onLogin }) {
         </View>
 
         {/* Email */}
-        <FieldLabel label="Email Address" />
+        <FieldLabel label={copy.emailAddress} />
         <View style={[s.fieldRow, focused === 'email' && s.fieldFocused]}>
           <Mail size={15} color={focused === 'email' ? C.gold : C.iconMuted} strokeWidth={2} />
           <TextInput
             style={s.textInput}
-            placeholder="you@example.com"
+            placeholder={copy.emailPlaceholder}
             placeholderTextColor={C.placeholder}
             value={email}
             onChangeText={setEmail}
@@ -98,12 +144,12 @@ export default function LoginScreen({ onLogin }) {
         </View>
 
         {/* Password */}
-        <FieldLabel label="Password" />
+        <FieldLabel label={copy.password} />
         <View style={[s.fieldRow, focused === 'pass' && s.fieldFocused]}>
           <Lock size={15} color={focused === 'pass' ? C.gold : C.iconMuted} strokeWidth={2} />
           <TextInput
             style={s.textInput}
-            placeholder="Enter your password"
+            placeholder={copy.passwordPlaceholder}
             placeholderTextColor={C.placeholder}
             value={pass}
             onChangeText={setPass}
@@ -122,8 +168,14 @@ export default function LoginScreen({ onLogin }) {
 
         {/* Forgot password */}
         <TouchableOpacity style={s.forgotRow} hitSlop={8}>
-          <Text style={s.forgotText}>Forgot password?</Text>
+          <Text style={s.forgotText}>{copy.forgotPassword}</Text>
         </TouchableOpacity>
+
+        {message ? (
+          <View style={s.messageBox}>
+            <Text style={s.messageText}>{message}</Text>
+          </View>
+        ) : null}
 
         {/* Sign in button */}
         <TouchableOpacity onPress={handleLogin} disabled={loading} activeOpacity={0.85}>
@@ -136,7 +188,7 @@ export default function LoginScreen({ onLogin }) {
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
               : <>
-                  <Text style={s.btnText}>Sign In</Text>
+                  <Text style={s.btnText}>{copy.signIn}</Text>
                   <ArrowRight size={15} color="#fff" strokeWidth={2.5} />
                 </>}
           </LinearGradient>
@@ -145,15 +197,15 @@ export default function LoginScreen({ onLogin }) {
         {/* OR separator */}
         <View style={s.orRow}>
           <View style={s.orLine} />
-          <Text style={s.orText}>OR</Text>
+          <Text style={s.orText}>{copy.or}</Text>
           <View style={s.orLine} />
         </View>
 
         {/* Sign up link */}
         <View style={s.switchRow}>
-          <Text style={s.switchText}>Don't have an account? </Text>
+          <Text style={s.switchText}>{copy.noAccount}</Text>
           <TouchableOpacity onPress={() => setShowSignUp(true)} hitSlop={8}>
-            <Text style={s.switchLink}>Sign up</Text>
+            <Text style={s.switchLink}>{copy.signUp}</Text>
           </TouchableOpacity>
         </View>
 
@@ -164,6 +216,25 @@ export default function LoginScreen({ onLogin }) {
 
 function FieldLabel({ label }) {
   return <Text style={s.fieldLabel}>{label}</Text>;
+}
+
+function getLoginErrorMessage(error) {
+  switch (error?.code) {
+    case 'auth/invalid-email':
+      return 'That email address does not look quite right. Please check it and try again.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Please contact CityFlow support.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'We could not sign you in with those details. Please check your email and password.';
+    case 'auth/too-many-requests':
+      return 'Too many sign-in attempts. Please wait a moment, then try again.';
+    case 'auth/network-request-failed':
+      return 'Network connection problem. Please check your internet and try again.';
+    default:
+      return 'Sign in could not be completed. Please check your details and try again.';
+  }
 }
 
 /* ── Design tokens ─────────────────────────── */
@@ -188,8 +259,17 @@ const s = StyleSheet.create({
   scroll: { flexGrow: 1, paddingHorizontal: 26, paddingTop: 72, paddingBottom: 48 },
 
   /* Brand */
-  brandRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 40 },
-  brandDiamond:{ width: 7, height: 7, backgroundColor: C.gold, transform: [{ rotate: '45deg' }] },
+  brandRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 40 },
+  brandLogoFrame: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  brandLogo:      { width: 50, height: 50 },
   brandText:   { fontSize: 18, fontWeight: '700', color: C.text, letterSpacing: 3 },
 
   /* Title */
@@ -237,6 +317,22 @@ const s = StyleSheet.create({
   /* Forgot */
   forgotRow:  { alignSelf: 'flex-end', marginTop: -8, marginBottom: 24 },
   forgotText: { fontSize: 12, color: C.gold, opacity: 0.85 },
+
+  messageBox: {
+    backgroundColor: 'rgba(220,53,69,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(220,53,69,0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    marginBottom: 16,
+  },
+  messageText: {
+    color: '#F2A8A8',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
 
   /* Button */
   btn:     { borderRadius: 12, height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },

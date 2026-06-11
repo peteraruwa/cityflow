@@ -11,7 +11,7 @@ import { C, FONTS } from '../shared/constants/theme';
 
 const Tab = createBottomTabNavigator();
 
-export default function MainTabs({ onLogout }) {
+export default function MainTabs({ onLogout, onResetApp }) {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -51,7 +51,7 @@ export default function MainTabs({ onLogout }) {
       />
       <Tab.Screen
         name="More"
-        children={() => <MoreStack onLogout={onLogout} />}
+        children={() => <MoreStack onLogout={onLogout} onResetApp={onResetApp} />}
         options={{ tabBarIcon: ({ color, focused }) => <Zap size={20} color={color} strokeWidth={focused?2.2:1.6}/>, tabBarLabel:'More' }}
       />
     </Tab.Navigator>

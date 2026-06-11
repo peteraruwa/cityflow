@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "cover",
+      "resizeMode": "contain",
       "backgroundColor": "#08011A"
     },
     "ios": {
@@ -53,8 +53,8 @@
         {
           "backgroundColor": "#08011A",
           "image": "./assets/splash.png",
-          "imageWidth": 200,
-          "resizeMode": "cover"
+          "imageWidth": 220,
+          "resizeMode": "contain"
         }
       ],
       "expo-web-browser",
@@ -72,8 +72,9 @@
           "android": {
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "buildToolsVersion": "36.0.0",
             "minSdkVersion": 24
           },
           "ios": {

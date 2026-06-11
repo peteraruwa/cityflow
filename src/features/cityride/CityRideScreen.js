@@ -4,16 +4,18 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Car, MapPin, Clock, ChevronRight, Check, CheckCircle } from 'lucide-react-native';
+import { Car, MapPin, Clock, ChevronRight, Check, CheckCircle, Search, ChevronDown, X } from 'lucide-react-native';
 import { C, FONTS } from '../../shared/constants/theme';
 import ScreenHeader from '../../shared/components/ScreenHeader';
-import { RIDE_TYPES, RECENT_DEST } from '../../shared/data';
+import { RIDE_TYPES, RECENT_DEST, LOCATIONS } from '../../shared/data';
 
 export default function CityRideScreen() {
+  const [from,     setFrom]     = useState('Main Gate');
   const [dest,     setDest]     = useState('');
   const [rideType, setRideType] = useState('standard');
   const [booking,  setBooking]  = useState(false);
   const [booked,   setBooked]   = useState(false);
+  const [activeField, setActiveField] = useState(null);
 
   const selected = RIDE_TYPES.find(r => r.id === rideType);
 
@@ -32,7 +34,7 @@ export default function CityRideScreen() {
         </View>
         <Text style={s.confirmedTitle}>Ride Confirmed!</Text>
         <Text style={s.confirmedSub}>
-          Your {selected.label} is on the way to Main Gate.{'\n'}Estimated arrival: {selected.eta}
+          Your {selected.label} is on the way to {from}.{'\n'}Estimated arrival: {selected.eta}
         </Text>
         <View style={s.confirmedStats}>
           {[['Destination',dest],['Fare',selected.fare],['ETA',selected.eta]].map(([k,v])=>(
@@ -44,7 +46,7 @@ export default function CityRideScreen() {
         </View>
         <TouchableOpacity
           style={s.anotherBtn}
-          onPress={()=>{ setBooked(false); setDest(''); }}
+          onPress={()=>{ setBooked(false); setDest(''); setFrom('Main Gate'); }}
         >
           <Text style={s.anotherTxt}>Book Another</Text>
         </TouchableOpacity>
@@ -60,19 +62,30 @@ export default function CityRideScreen() {
         <View style={s.routeCard}>
           <View style={s.routeFrom}>
             <View style={s.greenDot}/>
-            <View>
-              <Text style={s.routeLabel}>FROM</Text>
-              <Text style={s.routeTxt}>Main Gate, Redemption City</Text>
-            </View>
+            <LocationSelect
+              label="FROM"
+              value={from}
+              placeholder="Pickup location"
+              active={activeField === 'from'}
+              onFocus={() => setActiveField('from')}
+              onChange={setFrom}
+              onSelect={(value) => { setFrom(value); setActiveField(null); }}
+              onClose={() => setActiveField(null)}
+            />
           </View>
           <View style={s.routeDivider}/>
           <View style={s.routeTo}>
             <MapPin size={14} color={C.gold} strokeWidth={2}/>
             <View style={{flex:1, marginLeft:12}}>
-              <Text style={s.routeLabel}>TO</Text>
-              <TextInput
-                style={s.destInput} value={dest} onChangeText={setDest}
-                placeholder="Where to?" placeholderTextColor={C.ts}
+              <LocationSelect
+                label="TO"
+                value={dest}
+                placeholder="Where to?"
+                active={activeField === 'to'}
+                onFocus={() => setActiveField('to')}
+                onChange={setDest}
+                onSelect={(value) => { setDest(value); setActiveField(null); }}
+                onClose={() => setActiveField(null)}
               />
             </View>
           </View>
@@ -142,6 +155,49 @@ export default function CityRideScreen() {
   );
 }
 
+function LocationSelect({ label, value, placeholder, active, onFocus, onChange, onSelect, onClose }) {
+  const q = value.trim().toLowerCase();
+  const options = LOCATIONS.filter((item) => !q || item.toLowerCase().includes(q)).slice(0, 6);
+
+  return (
+    <View style={s.locationSelect}>
+      <Text style={s.routeLabel}>{label}</Text>
+      <View style={[s.locationInputWrap, active && s.locationInputActive]}>
+        <Search size={12} color={C.ts} strokeWidth={1.8} />
+        <TextInput
+          style={s.destInput}
+          value={value}
+          onChangeText={onChange}
+          onFocus={onFocus}
+          placeholder={placeholder}
+          placeholderTextColor={C.ts}
+        />
+        {value ? (
+          <TouchableOpacity onPress={() => onChange('')} hitSlop={8}>
+            <X size={13} color={C.ts} strokeWidth={2} />
+          </TouchableOpacity>
+        ) : (
+          <ChevronDown size={13} color={C.ts} strokeWidth={2} />
+        )}
+      </View>
+      {active && (
+        <View style={s.locationDropdown}>
+          {options.length ? options.map((item) => (
+            <TouchableOpacity key={item} style={s.locationOption} onPress={() => onSelect(item)} activeOpacity={0.75}>
+              <MapPin size={12} color={C.gold} strokeWidth={2} />
+              <Text style={s.locationOptionText}>{item}</Text>
+            </TouchableOpacity>
+          )) : (
+            <TouchableOpacity style={s.locationOption} onPress={onClose} activeOpacity={0.75}>
+              <Text style={s.locationOptionText}>No matching locations</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   root:            { flex:1, backgroundColor:'#08011A' },
   scroll:          { padding:18, paddingTop:16 },
@@ -152,7 +208,13 @@ const s = StyleSheet.create({
   routeTxt:        { fontSize:13, fontWeight:'600', color:'#EBE3D6' },
   routeDivider:    { height:0 },
   routeTo:         { flexDirection:'row', alignItems:'center', paddingTop:14 },
-  destInput:       { fontSize:13, fontWeight:'600', color:'#EBE3D6', padding:0 },
+  locationSelect:  { flex:1 },
+  locationInputWrap:{ flexDirection:'row', alignItems:'center', gap:8, borderRadius:11, paddingHorizontal:0 },
+  locationInputActive:{ backgroundColor:'rgba(113,40,206,0.08)' },
+  destInput:       { flex:1, fontSize:13, fontWeight:'600', color:'#EBE3D6', padding:0, minHeight:20 },
+  locationDropdown:{ marginTop:8, backgroundColor:'#0F0A1E', borderWidth:1, borderColor:'rgba(255,255,255,0.09)', borderRadius:13, overflow:'hidden' },
+  locationOption:  { flexDirection:'row', alignItems:'center', gap:9, paddingHorizontal:12, paddingVertical:10, borderBottomWidth:1, borderBottomColor:'rgba(255,255,255,0.06)' },
+  locationOptionText:{ fontSize:12.5, color:'#EBE3D6', fontWeight:'500' },
   sectionLabel:    { fontSize:11, color:'#8C7DA0', fontWeight:'500', marginBottom:10 },
   recentBlock:     { marginBottom:18 },
   recentItem:      { flexDirection:'row', alignItems:'center', gap:12, padding:10, paddingHorizontal:14, backgroundColor:'rgba(255,255,255,0.04)', borderWidth:1, borderColor:'rgba(255,255,255,0.07)', borderRadius:13, marginBottom:8 },

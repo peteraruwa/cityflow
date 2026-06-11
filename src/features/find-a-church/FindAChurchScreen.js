@@ -5,7 +5,7 @@ import {
   TouchableOpacity, Linking, StatusBar, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Search, Phone, MapPin, X, ChevronLeft, Church } from 'lucide-react-native';
+import { Search, Phone, MapPin, X, ChevronLeft, Church, UserRound, Mail, Clock } from 'lucide-react-native';
 import { PARISHES } from './data/parishes';
 import { C } from '../../shared/constants/theme';
 
@@ -79,7 +79,7 @@ function ParishDetail({ parish, onClose }) {
       <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
       <View style={s.detailSheet}>
         <LinearGradient
-          colors={[hexAlpha(parish.color, 0.18), '#0A0218']}
+          colors={['#160A2D', '#0A0218']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1.4 }}
           style={s.detailGradient}
@@ -102,8 +102,11 @@ function ParishDetail({ parish, onClose }) {
 
           {/* Rows */}
           <DetailRow icon={<Church size={15} color={parish.color} strokeWidth={1.8} />} label="Pastor" value={parish.pastor} color={parish.color} />
+          <DetailRow icon={<UserRound size={15} color={parish.color} strokeWidth={1.8} />} label="Assistant Pastor" value={parish.assistant} color={parish.color} />
           <DetailRow icon={<MapPin size={15} color={parish.color} strokeWidth={1.8} />} label="Location" value={`${parish.address}, Redemption City`} color={parish.color} />
           <DetailRow icon={<Phone size={15} color={parish.color} strokeWidth={1.8} />} label="Phone" value={parish.phone} color={parish.color} />
+          <DetailRow icon={<Mail size={15} color={parish.color} strokeWidth={1.8} />} label="Email" value={parish.email} color={parish.color} />
+          <DetailRow icon={<Clock size={15} color={parish.color} strokeWidth={1.8} />} label="Service Times" value={parish.serviceTimes} color={parish.color} />
 
           {/* Call CTA */}
           <TouchableOpacity
@@ -143,7 +146,10 @@ export default function FindAChurchScreen({ navigation }) {
     : PARISHES.filter(p =>
         p.name.toLowerCase().includes(query.toLowerCase()) ||
         p.pastor.toLowerCase().includes(query.toLowerCase()) ||
-        p.zone.toLowerCase().includes(query.toLowerCase())
+        p.assistant.toLowerCase().includes(query.toLowerCase()) ||
+        p.zone.toLowerCase().includes(query.toLowerCase()) ||
+        p.email.toLowerCase().includes(query.toLowerCase()) ||
+        p.description.toLowerCase().includes(query.toLowerCase())
       );
 
   const renderItem = useCallback(({ item }) => (
@@ -161,7 +167,7 @@ export default function FindAChurchScreen({ navigation }) {
         </TouchableOpacity>
         <View>
           <Text style={s.headerTitle}>Find a Church</Text>
-          <Text style={s.headerSub}>{PARISHES.length} parishes · Redemption City</Text>
+          <Text style={s.headerSub}>{PARISHES.length} churches - Redemption City</Text>
         </View>
       </View>
 
@@ -170,7 +176,7 @@ export default function FindAChurchScreen({ navigation }) {
         <Search size={15} color="rgba(235,227,214,0.35)" strokeWidth={2} style={{ marginRight: 9 }} />
         <TextInput
           style={s.searchInput}
-          placeholder="Search by name, pastor or zone…"
+          placeholder="Search by name, pastor or zone..."
           placeholderTextColor="rgba(235,227,214,0.3)"
           value={query}
           onChangeText={setQuery}
@@ -368,9 +374,10 @@ const s = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
+    backgroundColor: '#0A0218',
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: '#24133F',
   },
   detailGradient: {
     paddingTop: 28,

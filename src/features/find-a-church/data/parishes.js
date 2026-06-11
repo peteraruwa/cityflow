@@ -1,184 +1,182 @@
 // src/features/find-a-church/data/parishes.js
+// Find-a-Church uses the Redemption City navigation directory as its source of truth.
 
-export const PARISHES = [
-  {
-    id: '1',
-    name: 'Messiah\'s Praise Sanctuary',
-    shortName: 'MPS',
-    pastor: 'Pastor Richard Owoseni',
-    phone: '+234 802 345 6789',
-    address: 'Zone 4, Near the Main Auditorium',
-    zone: 'Zone 4',
-    color: '#6B35C0',
+import { CAMP_LOCATIONS } from '../../navigation/data/locations';
+
+const COLORS = ['#6B35C0', '#2A7FAB', '#4A8A5A', '#C48D38', '#8B5CF6', '#AB3E5B'];
+
+const MOCK_MINISTRY_DETAILS = {
+  new_arena_auditorium: {
+    pastor: 'Pastor Daniel Adeyemi',
+    assistant: 'Pastor (Mrs) Grace Adeyemi',
+    phone: '+234 802 100 4101',
+    email: 'newarena@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Wed 6:00 PM',
+    zone: 'Arena District',
   },
-  {
-    id: '2',
-    name: 'House of Favour',
-    shortName: 'HOF',
-    pastor: 'Pastor Elizabeth Adeleke',
-    phone: '+234 803 456 7890',
-    address: 'Zone 7, Behind the Guest Houses',
-    zone: 'Zone 7',
-    color: '#2A7FAB',
-  },
-  {
-    id: '3',
-    name: 'Amazing Grace Assembly',
-    shortName: 'AGA',
-    pastor: 'Pastor Michael Okafor',
-    phone: '+234 804 567 8901',
-    address: 'Zone 12, Close to the Prayer Mountain',
-    zone: 'Zone 12',
-    color: '#4A8A5A',
-  },
-  {
-    id: '4',
-    name: 'Jesus House',
-    shortName: 'JH',
-    pastor: 'Pastor David Ibiyeomie',
-    phone: '+234 805 678 9012',
-    address: 'Main Gate Area',
-    zone: 'Main Gate',
-    color: '#C48D38',
-  },
-  {
-    id: '5',
-    name: 'Olive Tree Parish',
-    shortName: 'OTP',
+  redemption_city_old_arena: {
     pastor: 'Pastor Samuel Oladipo',
-    phone: '+234 806 789 0123',
-    address: 'Residential Zone 1',
-    zone: 'Res. Zone 1',
-    color: '#7DB89B',
+    assistant: 'Pastor Miriam Oladipo',
+    email: 'oldarena@cityflow.app',
+    serviceTimes: 'Sun 7:30 AM, Tue 6:00 PM',
+    zone: 'Old Arena',
   },
-  {
-    id: '6',
-    name: 'Lighthouse Parish',
-    shortName: 'LHP',
-    pastor: 'Pastor Grace Ogunleye',
-    phone: '+234 807 890 1234',
-    address: 'Residential Zone 2',
-    zone: 'Res. Zone 2',
-    color: '#F0A500',
+  open_heavens_international_centre: {
+    pastor: 'Pastor Femi Akinwale',
+    assistant: 'Pastor Ruth Akinwale',
+    email: 'ohic@cityflow.app',
+    serviceTimes: 'Sun 9:00 AM, Thu 6:00 PM',
+    zone: 'International Centre',
   },
-  {
-    id: '7',
-    name: 'Peace House Chapel',
-    shortName: 'PHC',
-    pastor: 'Pastor James Eze',
-    phone: '+234 808 901 2345',
-    address: 'Administrative Zone',
-    zone: 'Admin Zone',
-    color: '#AB3E5B',
+  king_is_coming_model_parish: {
+    pastor: 'Pastor Joshua Bamidele',
+    assistant: 'Pastor Deborah Bamidele',
+    phone: '+234 803 210 4104',
+    email: 'kingiscoming@cityflow.app',
+    serviceTimes: 'Sun 8:30 AM, Wed 6:00 PM',
+    zone: 'Model Parish Zone',
   },
-  {
-    id: '8',
-    name: 'Living Water Parish',
-    shortName: 'LWP',
-    pastor: 'Pastor Mercy Akpan',
-    phone: '+234 809 012 3456',
-    address: 'Near Prayer Mountain',
-    zone: 'Prayer Mountain',
-    color: '#2A7FAB',
+  rccg_house_of_favour: {
+    pastor: 'Pastor Elizabeth Adeleke',
+    assistant: 'Pastor Tunde Adeleke',
+    phone: '+234 803 456 7890',
+    email: 'houseoffavour@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Tue 6:00 PM',
+    zone: 'Favour Court',
   },
-  {
-    id: '9',
-    name: 'Harvest Field Parish',
-    shortName: 'HFP',
-    pastor: 'Pastor Peter Adebayo',
-    phone: '+234 810 123 4567',
-    address: 'Eastern Residential Zone',
-    zone: 'Eastern Zone',
-    color: '#9B5E3A',
+  rccg_expression_church: {
+    pastor: 'Pastor Michael Okafor',
+    assistant: 'Pastor Chidinma Okafor',
+    phone: '+234 804 567 8901',
+    email: 'expression@cityflow.app',
+    serviceTimes: 'Sun 10:00 AM, Fri 6:30 PM',
+    zone: 'Expression Hub',
   },
-  {
-    id: '10',
-    name: 'Mercy Seat Parish',
-    shortName: 'MSP',
-    pastor: 'Pastor Esther Nwachukwu',
-    phone: '+234 811 234 5678',
-    address: 'Near the Medical Centre',
-    zone: 'Medical Zone',
-    color: '#C0392B',
-  },
-  {
-    id: '11',
-    name: 'Shepherd\'s Fold Parish',
-    shortName: 'SFP',
-    pastor: 'Pastor Timothy Yusuf',
-    phone: '+234 812 345 6789',
-    address: 'Guest House Area',
-    zone: 'Guest Area',
-    color: '#6B35C0',
-  },
-  {
-    id: '12',
-    name: 'Gates of Praise Parish',
-    shortName: 'GPP',
-    pastor: 'Pastor Hannah Bello',
-    phone: '+234 813 456 7890',
-    address: 'Western Zone',
-    zone: 'Western Zone',
-    color: '#4A8A5A',
-  },
-  {
-    id: '13',
-    name: 'Trinity Chapel',
-    shortName: 'TC',
+  rccg_amazing_grace_assembly: {
     pastor: 'Pastor Caleb Obi',
+    assistant: 'Pastor Ifeoma Obi',
     phone: '+234 814 567 8901',
-    address: 'Near the Bookshop',
-    zone: 'Central',
-    color: '#7D3C98',
+    email: 'amazinggrace@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Thu 6:00 PM',
+    zone: 'Grace Avenue',
   },
-  {
-    id: '14',
-    name: 'Faith Arena',
-    shortName: 'FA',
-    pastor: 'Pastor Deborah Kalu',
-    phone: '+234 815 678 9012',
-    address: 'Near the Sports Complex',
-    zone: 'Sports Complex',
-    color: '#E67E22',
+  rccg_open_heaven_parish_church: {
+    pastor: 'Pastor Hannah Bello',
+    assistant: 'Pastor Ibrahim Bello',
+    phone: '+234 813 456 7890',
+    email: 'openheavenchurch@cityflow.app',
+    serviceTimes: 'Sun 9:00 AM, Wed 6:00 PM',
+    zone: 'Open Heaven Close',
   },
-  {
-    id: '15',
-    name: 'Bread of Life Parish',
-    shortName: 'BLP',
-    pastor: 'Pastor Stephen Orji',
-    phone: '+234 816 789 0123',
-    address: 'Restaurant District',
-    zone: 'Restaurant District',
-    color: '#C48D38',
-  },
-  {
-    id: '16',
-    name: 'Refuge Chapel',
-    shortName: 'RC',
-    pastor: 'Pastor Ruth Akinyemi',
-    phone: '+234 817 890 1234',
-    address: 'Perimeter Zones',
-    zone: 'Perimeter',
-    color: '#2E86AB',
-  },
-  {
-    id: '17',
-    name: 'King\'s Court Parish',
-    shortName: 'KCP',
+  city_of_kings_parish: {
     pastor: 'Pastor Joseph Eze',
+    assistant: 'Pastor Sarah Eze',
     phone: '+234 818 901 2345',
-    address: 'Near Administrative Offices',
-    zone: 'Admin Area',
-    color: '#B7950B',
+    email: 'cityofkings@cityflow.app',
+    serviceTimes: 'Sun 8:30 AM, Tue 6:30 PM',
+    zone: 'Kings Court',
   },
-  {
-    id: '18',
-    name: 'Morning Star Parish',
-    shortName: 'MST',
-    pastor: 'Pastor Sarah Mohammed',
-    phone: '+234 819 012 3456',
-    address: 'Far Eastern Edge',
-    zone: 'Eastern Edge',
-    color: '#1ABC9C',
+  gate_of_heaven_church: {
+    pastor: 'Pastor Ruth Akinyemi',
+    assistant: 'Pastor Stephen Akinyemi',
+    phone: '+234 817 890 1234',
+    email: 'gateofheaven@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Fri 6:00 PM',
+    zone: 'Gate Axis',
   },
-];
+  resurrection_parish: {
+    pastor: 'Pastor Peter Adebayo',
+    assistant: 'Pastor Naomi Adebayo',
+    phone: '+234 810 123 4567',
+    email: 'resurrection@cityflow.app',
+    serviceTimes: 'Sun 7:30 AM, Wed 6:30 PM',
+    zone: 'Resurrection Lane',
+  },
+  divine_favour_parish: {
+    pastor: 'Pastor Mercy Akpan',
+    assistant: 'Pastor Emmanuel Akpan',
+    phone: '+234 809 012 3456',
+    email: 'divinefavour@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Thu 6:30 PM',
+    zone: 'Divine Favour Close',
+  },
+  the_youth_place: {
+    pastor: 'Pastor Temitayo Martins',
+    assistant: 'Pastor Kemi Martins',
+    phone: '+234 805 678 9012',
+    email: 'youthplace@cityflow.app',
+    serviceTimes: 'Sun 4:00 PM, Sat 5:00 PM',
+    zone: 'Youth Centre',
+  },
+  love_assembly_parish: {
+    pastor: 'Pastor Grace Ogunleye',
+    assistant: 'Pastor Wale Ogunleye',
+    phone: '+234 807 890 1234',
+    email: 'loveassembly@cityflow.app',
+    serviceTimes: 'Sun 8:30 AM, Wed 6:00 PM',
+    zone: 'Love Assembly Road',
+  },
+  open_heaven_parish: {
+    pastor: 'Pastor Esther Nwachukwu',
+    assistant: 'Pastor David Nwachukwu',
+    phone: '+234 811 234 5678',
+    email: 'openheavenparish@cityflow.app',
+    serviceTimes: 'Sun 9:00 AM, Tue 6:00 PM',
+    zone: 'Open Heaven Axis',
+  },
+  glory_house: {
+    pastor: 'Pastor Timothy Yusuf',
+    assistant: 'Pastor Aisha Yusuf',
+    phone: '+234 812 345 6789',
+    email: 'gloryhouse@cityflow.app',
+    serviceTimes: 'Sun 8:00 AM, Thu 6:00 PM',
+    zone: 'Glory House Street',
+  },
+  messiah_praise_sanctuary: {
+    pastor: 'Pastor Richard Owoseni',
+    assistant: 'Pastor (Mrs) Bola Owoseni',
+    phone: '+234 802 345 6789',
+    email: 'messiahpraise@cityflow.app',
+    serviceTimes: 'Sun 4:00 PM, Fri 6:30 PM',
+    zone: 'Youth Church Axis',
+  },
+};
+
+function initials(name) {
+  return name
+    .replace(/The Redeemed Christian Church Of God,?\s*/i, 'RCCG ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => !['the', 'of', 'and'].includes(word.toLowerCase()))
+    .slice(0, 3)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+}
+
+function fallbackPhone(index) {
+  return `+234 80${index + 2} 410 ${String(1100 + index).slice(1)}`;
+}
+
+export const PARISHES = CAMP_LOCATIONS
+  .filter((location) => location.category === 'church')
+  .map((location, index) => {
+    const detail = MOCK_MINISTRY_DETAILS[location.id] || {};
+    const subcategory = location.subcategory
+      ? location.subcategory.replace(/_/g, ' ')
+      : 'church';
+
+    return {
+      ...location,
+      shortName: location.shortName || initials(location.name),
+      pastor: detail.pastor || 'Pastor CityFlow Parish Lead',
+      assistant: detail.assistant || 'Assistant Pastor CityFlow',
+      phone: location.phone || detail.phone || fallbackPhone(index),
+      email: detail.email || `${location.id}@cityflow.app`,
+      serviceTimes: detail.serviceTimes || 'Sun 8:00 AM, Wed 6:00 PM',
+      address: location.address || location.description || 'Redemption City',
+      zone: detail.zone || `${subcategory.charAt(0).toUpperCase()}${subcategory.slice(1)} Zone`,
+      color: COLORS[index % COLORS.length],
+      coordinates: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+    };
+  });

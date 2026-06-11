@@ -1,204 +1,165 @@
-// src/features/events/EventDetailScreen.js
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, StyleSheet, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronLeft } from 'lucide-react-native';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { auth, db } from '../../shared/config/firebase';
-import { Calendar, Clock, MapPin, Bell, Calendar as GoogleCal } from 'lucide-react-native';
+import { Bell, Building2, CalendarDays, ChevronLeft, Clock, Youtube } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
+import { getEventById } from './eventsData';
+import { openGoogleCalendar } from './googleCalendar';
 import { scheduleEventReminders } from './useEventReminders';
+import { getFollowedEventIds, setEventFollowed } from '../notifications/notificationData';
+
+function weekdayLabel(day) {
+  return { SUN: 'Sunday', MON: 'Monday', WED: 'Wednesday', FRI: 'Friday', SAT: 'Saturday' }[day] || day;
+}
 
 export default function EventDetailScreen({ route, navigation }) {
-  const { eventId } = route.params;
-  const [event, setEvent] = useState(null);
+  const event = getEventById(route.params?.eventId);
   const [isFollowed, setIsFollowed] = useState(false);
   const [reminderDayBefore, setReminderDayBefore] = useState(false);
   const [reminderDayOf, setReminderDayOf] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadEvent();
-  }, []);
-
-  const loadEvent = async () => {
-    try {
-      const eventDoc = await getDoc(doc(db, 'events', eventId));
-      if (eventDoc.exists()) setEvent({ id: eventDoc.id, ...eventDoc.data() });
-      
-      const userId = auth.currentUser?.uid;
-      if (userId) {
-        // Correct subcollection path: users/{userId}/followedEvents/{eventId}
-        const userEventRef = doc(db, 'users', userId, 'followedEvents', eventId);
-        const userEventDoc = await getDoc(userEventRef);
-        if (userEventDoc.exists()) {
-          setIsFollowed(true);
-          const data = userEventDoc.data();
-          setReminderDayBefore(data.reminderDayBefore || false);
-          setReminderDayOf(data.reminderDayOf || false);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading event:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFollow = async () => {
-    const userId = auth.currentUser?.uid;
-    if (!userId) return Alert.alert('Please login first');
-    
-    const userEventRef = doc(db, 'users', userId, 'followedEvents', eventId);
-    if (isFollowed) {
-      // Unfollow
-      await deleteDoc(userEventRef);
-      setIsFollowed(false);
-      setReminderDayBefore(false);
-      setReminderDayOf(false);
-      Alert.alert('Unfollowed', 'You will no longer receive reminders');
-    } else {
-      // Follow with default reminders
-      await setDoc(userEventRef, {
-        eventId,
-        reminderDayBefore: true,
-        reminderDayOf: true,
-        followedAt: new Date(),
-      });
-      setIsFollowed(true);
-      setReminderDayBefore(true);
-      setReminderDayOf(true);
-      if (event) await scheduleEventReminders(event, { reminderDayBefore: true, reminderDayOf: true });
-      Alert.alert('Following', 'You will receive reminders for this event');
-    }
-  };
-
-  const updateReminders = async (dayBefore, dayOf) => {
-    const userId = auth.currentUser?.uid;
-    if (!userId || !isFollowed) return;
-    const userEventRef = doc(db, 'users', userId, 'followedEvents', eventId);
-    await updateDoc(userEventRef, {
-      reminderDayBefore: dayBefore,
-      reminderDayOf: dayOf,
+    getFollowedEventIds().then((ids) => {
+      const followed = ids.includes(event.id);
+      setIsFollowed(followed);
+      setReminderDayBefore(followed);
+      setReminderDayOf(followed);
     });
-    setReminderDayBefore(dayBefore);
-    setReminderDayOf(dayOf);
-    await scheduleEventReminders(event, { reminderDayBefore: dayBefore, reminderDayOf: dayOf });
-  };
+  }, [event.id]);
 
-  const addToGoogleCalendar = () => {
-    Alert.alert('Coming Soon', 'Google Calendar integration will be available in the next update.');
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <Text style={{ color: '#fff' }}>Loading...</Text>
-      </View>
-    );
+  async function applyFollow(nextFollowed, nextDayBefore = reminderDayBefore, nextDayOf = reminderDayOf) {
+    setIsFollowed(nextFollowed);
+    setReminderDayBefore(nextFollowed && nextDayBefore);
+    setReminderDayOf(nextFollowed && nextDayOf);
+    await setEventFollowed(event.id, nextFollowed);
+    if (nextFollowed) {
+      await scheduleEventReminders(event, {
+        reminderDayBefore: nextDayBefore,
+        reminderDayOf: nextDayOf,
+      });
+    }
   }
-  if (!event) {
-    return (
-      <View style={styles.container}>
-        <Text style={{ color: '#fff' }}>Event not found</Text>
-      </View>
-    );
+
+  async function handleCalendar() {
+    try {
+      const url = await openGoogleCalendar(event);
+      if (!url) Alert.alert('Calendar unavailable', 'Could not open Google Calendar on this device.');
+    } catch {
+      Alert.alert('Calendar unavailable', 'Could not open Google Calendar on this device.');
+    }
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Back button */}
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <ChevronLeft size={24} color="#EBE3D6" />
-      </TouchableOpacity>
+    <ScrollView style={s.root} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} activeOpacity={0.75}>
+          <ChevronLeft size={18} color={C.tp} strokeWidth={2} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>Event Details</Text>
+      </View>
 
-      {/* Hero gradient */}
-      <LinearGradient colors={['rgba(90,18,165,0.6)', '#08011A']} style={styles.hero}>
-        <Text style={styles.title}>{event.title}</Text>
+      <LinearGradient colors={[`${event.color || C.purple}22`, 'rgba(10,2,24,1)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { borderColor: `${event.color || C.purple}38` }]}>
+        <View style={[s.heroGlow, { backgroundColor: `${event.color || C.purple}14` }]} />
+        <View style={s.tagRow}>
+          <Text style={[s.tag, { color: event.color || C.gold, backgroundColor: `${event.color || C.gold}1E`, borderColor: `${event.color || C.gold}35` }]}>{event.tag || 'EVENT'}</Text>
+          {event.live && (
+            <View style={s.liveChip}>
+              <View style={s.liveDot} />
+              <Text style={s.liveText}>LIVE NOW</Text>
+            </View>
+          )}
+        </View>
+        <Text style={s.title}>{event.title}</Text>
+        <View style={s.metaList}>
+          <View style={s.metaRow}>
+            <CalendarDays size={12} color={C.gold} strokeWidth={1.8} />
+            <Text style={s.metaText}>{weekdayLabel(event.day)} · {event.date}</Text>
+          </View>
+          <View style={s.metaRow}>
+            <Clock size={12} color={C.gold} strokeWidth={1.8} />
+            <Text style={s.metaText}>{event.time}</Text>
+          </View>
+          <View style={s.metaRow}>
+            <Building2 size={12} color={C.gold} strokeWidth={1.8} />
+            <Text style={s.metaText}>{event.venue || event.location} · Redemption City</Text>
+          </View>
+        </View>
       </LinearGradient>
 
-      <View style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Calendar size={18} color={C.gold} />
-          <Text style={styles.infoText}>{event.date}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Clock size={18} color={C.gold} />
-          <Text style={styles.infoText}>{event.time}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <MapPin size={18} color={C.gold} />
-          <Text style={styles.infoText}>{event.location}</Text>
-        </View>
+      <View style={s.aboutCard}>
+        <Text style={s.kicker}>About this event</Text>
+        <Text style={s.desc}>{event.description}</Text>
       </View>
 
-      <View style={styles.descriptionCard}>
-        <Text style={styles.descTitle}>Description</Text>
-        <Text style={styles.descText}>{event.description}</Text>
-      </View>
+      {event.live ? (
+        <TouchableOpacity onPress={() => event.yt && Linking.openURL(event.yt)} activeOpacity={0.86}>
+          <LinearGradient colors={['#E62117', '#B31217']} style={s.youtubeBtn}>
+            <Youtube size={17} color="#fff" strokeWidth={2} />
+            <Text style={s.youtubeText}>Watch live on YouTube</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={() => applyFollow(!isFollowed, true, true)} style={s.reminderBtn} activeOpacity={0.86}>
+          <Bell size={14} color={C.gold} strokeWidth={2} />
+          <Text style={s.reminderBtnText}>{isFollowed ? 'Following event' : 'Set a reminder'}</Text>
+        </TouchableOpacity>
+      )}
 
-      <TouchableOpacity style={styles.followBtn} onPress={handleFollow}>
-        <LinearGradient colors={[isFollowed ? '#5A18A8' : '#7128CE', '#5A18A8']} style={styles.gradientBtn}>
-          <Bell size={16} color="#fff" />
-          <Text style={styles.btnText}>{isFollowed ? 'Unfollow Event' : 'Follow Event'}</Text>
-        </LinearGradient>
+      <TouchableOpacity onPress={handleCalendar} style={s.calendarBtn} activeOpacity={0.86}>
+        <CalendarDays size={14} color={C.gold} strokeWidth={2} />
+        <Text style={s.calendarText}>Add to Google Calendar</Text>
       </TouchableOpacity>
 
       {isFollowed && (
-        <View style={styles.reminderCard}>
-          <Text style={styles.reminderTitle}>Reminder Settings</Text>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Remind me 1 day before</Text>
+        <View style={s.settingsCard}>
+          <Text style={s.kicker}>Reminder Settings</Text>
+          <View style={s.switchRow}>
+            <Text style={s.switchText}>Remind me 1 day before</Text>
             <Switch
               value={reminderDayBefore}
-              onValueChange={val => updateReminders(val, reminderDayOf)}
+              onValueChange={(value) => applyFollow(true, value, reminderDayOf)}
             />
           </View>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Remind me on the day</Text>
+          <View style={s.switchRow}>
+            <Text style={s.switchText}>Remind me on the day</Text>
             <Switch
               value={reminderDayOf}
-              onValueChange={val => updateReminders(reminderDayBefore, val)}
+              onValueChange={(value) => applyFollow(true, reminderDayBefore, value)}
             />
           </View>
         </View>
       )}
-
-      <TouchableOpacity style={styles.calBtn} onPress={addToGoogleCalendar}>
-        <GoogleCal size={16} color={C.gold} />
-        <Text style={styles.calBtnText}>Add to Google Calendar</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#08011A' },
-  content: { paddingBottom: 40 },
-  backButton: {
-    position: 'absolute',
-    top: 50,
-    left: 16,
-    zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 20,
-    padding: 8,
-  },
-  hero: { padding: 24, paddingTop: 60, marginTop: 20 },
-  title: { fontSize: 24, fontWeight: '700', color: '#EBE3D6' },
-  infoCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, margin: 16, padding: 16 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  infoText: { fontSize: 14, color: '#EBE3D6', flex: 1 },
-  descriptionCard: { margin: 16, padding: 16, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16 },
-  descTitle: { fontSize: 16, fontWeight: '600', color: '#EBE3D6', marginBottom: 8 },
-  descText: { fontSize: 14, color: '#8C7DA0', lineHeight: 20 },
-  followBtn: { marginHorizontal: 16, marginTop: 8 },
-  gradientBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 30 },
-  btnText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  reminderCard: { margin: 16, padding: 16, backgroundColor: 'rgba(113,40,206,0.1)', borderRadius: 16 },
-  reminderTitle: { fontSize: 14, fontWeight: '600', color: '#EBE3D6', marginBottom: 12 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  switchLabel: { fontSize: 14, color: '#EBE3D6' },
-  calBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(196,141,56,0.5)', borderRadius: 30 },
-  calBtnText: { fontSize: 14, color: C.gold, fontWeight: '500' },
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg },
+  content: { paddingBottom: 28 },
+  header: { paddingHorizontal: 18, paddingTop: 48, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: C.tp },
+  hero: { marginHorizontal: 18, borderWidth: 1, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 20, overflow: 'hidden', marginBottom: 13 },
+  heroGlow: { position: 'absolute', top: -40, right: -30, width: 150, height: 150, borderRadius: 75 },
+  tagRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 13 },
+  tag: { fontSize: 9, fontWeight: '700', borderWidth: 1, borderRadius: 7, paddingHorizontal: 9, paddingVertical: 3, letterSpacing: 0.45 },
+  liveChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(215,55,55,0.18)', borderWidth: 1, borderColor: 'rgba(225,75,75,0.3)', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3 },
+  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#F06565' },
+  liveText: { fontSize: 8.5, fontWeight: '800', color: '#F06565', letterSpacing: 1 },
+  title: { fontSize: 20, fontWeight: '700', color: C.tp, lineHeight: 26, marginBottom: 13 },
+  metaList: { gap: 7 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  metaText: { fontSize: 12, color: C.ts },
+  aboutCard: { marginHorizontal: 18, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 15, marginBottom: 14 },
+  kicker: { fontSize: 10, fontWeight: '700', color: C.tm, letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 8 },
+  desc: { fontSize: 12.5, color: C.ts, lineHeight: 21 },
+  youtubeBtn: { marginHorizontal: 18, paddingVertical: 14, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  youtubeText: { fontSize: 13.5, fontWeight: '700', color: '#fff' },
+  reminderBtn: { marginHorizontal: 18, paddingVertical: 13, borderRadius: 15, backgroundColor: C.surf, borderWidth: 1, borderColor: C.bHi, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  reminderBtnText: { fontSize: 13, fontWeight: '600', color: C.tp },
+  calendarBtn: { marginHorizontal: 18, marginTop: 12, paddingVertical: 13, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(196,141,56,0.32)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  calendarText: { fontSize: 13, color: C.gold, fontWeight: '700' },
+  settingsCard: { marginHorizontal: 18, marginTop: 14, backgroundColor: 'rgba(113,40,206,0.1)', borderWidth: 1, borderColor: 'rgba(113,40,206,0.28)', borderRadius: 18, padding: 15 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7 },
+  switchText: { fontSize: 13, color: C.tp },
 });

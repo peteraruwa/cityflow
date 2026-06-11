@@ -1,24 +1,63 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   MapPin, Bell, Package, BookOpen, HelpCircle,
-  Settings, LogOut, ChevronRight,
+  Settings, LogOut, ChevronRight, Trophy,
 } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
 import ScreenHeader from '../../shared/components/ScreenHeader';
+import { QUIZ_BADGE_KEY, QUIZ_POINTS_KEY } from '../quiz/QuizScreen';
 
 const MENU = [
-  { Icon:Bell,       label:'Notifications',   sub:'Manage your alerts',      color:'#7128CE' },
-  { Icon:Package,    label:'My L&F Reports',  sub:'Track your submissions',  color:'#C48D38' },
+  { Icon:Bell,       label:'Notifications',   sub:'Manage your alerts',      color:'#7128CE', route:'Notifications' },
+  { Icon:Package,    label:'My L&F Reports',  sub:'Track your submissions',  color:'#C48D38', tab:'LostFound' },
   { Icon:BookOpen,   label:'Booking History', sub:'Past stays & events',     color:'#2A7FAB' },
   { Icon:HelpCircle, label:'Help & Support',  sub:'FAQs and contact',        color:'#4A8A5A' },
-  { Icon:Settings,   label:'Settings',        sub:'App preferences',         color:'#6A6880' },
+  { Icon:Settings,   label:'Settings',        sub:'App preferences',         color:'#6A6880', route:'MoreSettings' },
 ];
 
-export default function ProfileScreen({ route }) {
+export default function ProfileScreen({ navigation, route }) {
   const onLogout = route?.params?.onLogout;
+  const [quizPoints, setQuizPoints] = useState(0);
+  const [quizBadge, setQuizBadge] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        const [pointsRaw, badgeRaw] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_POINTS_KEY),
+          AsyncStorage.getItem(QUIZ_BADGE_KEY),
+        ]);
+        if (!active) return;
+        setQuizPoints(Number(pointsRaw) || 0);
+        setQuizBadge(badgeRaw ? JSON.parse(badgeRaw) : null);
+      })().catch(() => {
+        if (active) {
+          setQuizPoints(0);
+          setQuizBadge(null);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const openMenuItem = (item) => {
+    if (item.route) {
+      navigation.navigate(item.route);
+      return;
+    }
+    if (item.tab) {
+      navigation.getParent()?.navigate(item.tab);
+    }
+  };
 
   return (
     <View style={s.root}>
@@ -26,13 +65,39 @@ export default function ProfileScreen({ route }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
         {/* Avatar */}
         <View style={s.avatarBlock}>
-          <View style={s.avatar}><Text style={s.avatarTxt}>PA</Text></View>
+          <LinearGradient colors={[C.purple, '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatar}>
+            <Text style={s.avatarTxt}>PA</Text>
+          </LinearGradient>
           <Text style={s.name}>Peter Adeyemi</Text>
           <Text style={s.email}>peter.adeyemi@example.com</Text>
           <View style={s.locRow}>
             <MapPin size={10} color={C.gold} strokeWidth={2.5}/>
             <Text style={s.locTxt}> Redemption City</Text>
           </View>
+        </View>
+
+        <View style={s.quizBadgeCard}>
+          <LinearGradient
+            colors={['rgba(196,141,56,0.18)', 'rgba(10,2,24,0.98)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.quizBadgeInner}
+          >
+            <View style={s.quizBadgeIcon}>
+              <Trophy size={18} color={C.gold} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.quizBadgeLabel}>Know Your City Badge</Text>
+              <Text style={s.quizBadgeTitle}>{quizBadge?.label || 'Start the Quiz'}</Text>
+              <Text style={s.quizBadgeSub}>
+                {quizPoints} total points{quizBadge ? ` · Last score ${quizBadge.lastScore}/${quizBadge.totalQuestions}` : ' · No quiz completed yet'}
+              </Text>
+            </View>
+            <View style={s.quizPointsPill}>
+              <Text style={s.quizPointsValue}>{quizPoints}</Text>
+              <Text style={s.quizPointsText}>pts</Text>
+            </View>
+          </LinearGradient>
         </View>
 
         {/* Stats */}
@@ -47,8 +112,10 @@ export default function ProfileScreen({ route }) {
 
         {/* Menu */}
         <View style={s.menu}>
-          {MENU.map(({ Icon, label, sub, color },i) => (
-            <TouchableOpacity key={i} style={s.menuItem} activeOpacity={0.7}>
+          {MENU.map((item,i) => {
+            const { Icon, label, sub, color } = item;
+            return (
+            <TouchableOpacity key={i} style={s.menuItem} onPress={() => openMenuItem(item)} activeOpacity={0.7}>
               <View style={[s.menuIcon, { backgroundColor:`${color}18`, borderColor:`${color}25` }]}>
                 <Icon size={16} color={color} strokeWidth={1.8}/>
               </View>
@@ -58,7 +125,8 @@ export default function ProfileScreen({ route }) {
               </View>
               <ChevronRight size={14} color={C.tm} strokeWidth={2}/>
             </TouchableOpacity>
-          ))}
+          );
+          })}
 
           {/* Sign out */}
           <TouchableOpacity style={s.signOutBtn} onPress={onLogout} activeOpacity={0.8}>
@@ -77,7 +145,7 @@ const s = StyleSheet.create({
   root:        { flex:1, backgroundColor:'#08011A' },
   scroll:      { paddingBottom:20 },
   avatarBlock: { paddingHorizontal:22, paddingTop:10, paddingBottom:20, alignItems:'center' },
-  avatar:      { width:72, height:72, borderRadius:36, backgroundColor:'#7128CE', alignItems:'center', justifyContent:'center', marginBottom:14 },
+  avatar:      { width:72, height:72, borderRadius:36, alignItems:'center', justifyContent:'center', marginBottom:14, shadowColor:'#641EBE', shadowOpacity:0.35, shadowRadius:28, shadowOffset:{ width:0, height:8 } },
   avatarTxt:   { fontSize:26, fontWeight:'700', color:'#fff' },
   name:        { fontSize:18, fontWeight:'700', color:'#EBE3D6', marginBottom:4 },
   email:       { fontSize:12, color:'#8C7DA0', marginBottom:4 },
@@ -88,6 +156,15 @@ const s = StyleSheet.create({
   statDivider: { borderRightWidth:1, borderRightColor:'rgba(255,255,255,0.07)' },
   statVal:     { fontSize:20, fontWeight:'700', color:'#EBE3D6', marginBottom:3 },
   statLbl:     { fontSize:10, color:'#8C7DA0' },
+  quizBadgeCard: { marginHorizontal:18, marginBottom:14, borderRadius:18, overflow:'hidden', borderWidth:1, borderColor:'rgba(196,141,56,0.26)' },
+  quizBadgeInner: { flexDirection:'row', alignItems:'center', gap:12, padding:14, paddingHorizontal:15 },
+  quizBadgeIcon: { width:40, height:40, borderRadius:12, backgroundColor:'rgba(196,141,56,0.16)', borderWidth:1, borderColor:'rgba(196,141,56,0.32)', alignItems:'center', justifyContent:'center' },
+  quizBadgeLabel: { fontSize:9.5, color:'#8C7DA0', fontWeight:'800', letterSpacing:1, textTransform:'uppercase', marginBottom:2 },
+  quizBadgeTitle: { fontSize:14, color:'#EBE3D6', fontWeight:'800' },
+  quizBadgeSub: { fontSize:10.5, color:'#8C7DA0', marginTop:2 },
+  quizPointsPill: { minWidth:54, paddingVertical:7, paddingHorizontal:9, borderRadius:13, backgroundColor:'rgba(196,141,56,0.14)', borderWidth:1, borderColor:'rgba(196,141,56,0.35)', alignItems:'center' },
+  quizPointsValue: { fontSize:17, color:'#C48D38', fontWeight:'900' },
+  quizPointsText: { fontSize:9, color:'#C48D38', fontWeight:'700', textTransform:'uppercase' },
   menu:        { paddingHorizontal:18, gap:10 },
   menuItem:    { flexDirection:'row', alignItems:'center', gap:12, padding:13, paddingHorizontal:15, backgroundColor:'rgba(255,255,255,0.04)', borderWidth:1, borderColor:'rgba(255,255,255,0.07)', borderRadius:16 },
   menuIcon:    { width:36, height:36, borderRadius:10, alignItems:'center', justifyContent:'center', borderWidth:1 },

@@ -1,6 +1,12 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import MoreScreen              from '../features/more/MoreScreen';
+import MoreScreen, {
+  AboutCityFlowScreen,
+  AboutRCCGScreen,
+  AboutRedemptionCityScreen,
+  MoreSettingsScreen,
+  PrivacyScreen,
+} from '../features/more/MoreScreen';
 import EmergencyScreen         from '../features/emergency/EmergencyScreen';
 import AIAssistantScreen       from '../features/ai-assistant/AIAssistantScreen';
 import BusinessDirectoryScreen from '../features/business/screens/BusinessDirectoryScreen';
@@ -9,10 +15,13 @@ import ContactsScreen          from '../features/contacts/ContactsScreen';
 import QuizScreen              from '../features/quiz/QuizScreen';
 import CityTourScreen          from '../features/tour/CityTourScreen';
 import ProfileScreen           from '../features/profile/ProfileScreen';
+import NotificationsScreen     from '../features/notifications/NotificationsScreen';
+import NewsDetailScreen        from '../features/notifications/NewsDetailScreen';
+import EventDetailScreen       from '../features/events/EventDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
-export default function MoreStack({ onLogout }) {
+export default function MoreStack({ onLogout, onResetApp }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle:{ backgroundColor:'#08011A' } }}>
       <Stack.Screen name="MoreMain"          component={MoreScreen} initialParams={{ onLogout }} />
@@ -24,6 +33,16 @@ export default function MoreStack({ onLogout }) {
       <Stack.Screen name="Quiz"              component={QuizScreen} />
       <Stack.Screen name="CityTour"          component={CityTourScreen} />
       <Stack.Screen name="Profile"           component={ProfileScreen} initialParams={{ onLogout }} />
+      <Stack.Screen name="MoreSettings">
+        {(props) => <MoreSettingsScreen {...props} onResetApp={onResetApp} />}
+      </Stack.Screen>
+      <Stack.Screen name="Notifications"     component={NotificationsScreen} />
+      <Stack.Screen name="NewsDetail"        component={NewsDetailScreen} />
+      <Stack.Screen name="EventDetail"       component={EventDetailScreen} />
+      <Stack.Screen name="Privacy"           component={PrivacyScreen} />
+      <Stack.Screen name="AboutCityFlow"      component={AboutCityFlowScreen} />
+      <Stack.Screen name="AboutRCCG"          component={AboutRCCGScreen} />
+      <Stack.Screen name="AboutRedemptionCity" component={AboutRedemptionCityScreen} />
     </Stack.Navigator>
   );
 }

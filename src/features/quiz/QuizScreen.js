@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft, X, CheckCircle, Check, RotateCcw } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
 import { QUIZ_QUESTIONS } from '../../shared/data';
+
+export const QUIZ_POINTS_KEY = 'cityflow_quiz_points';
+export const QUIZ_BADGE_KEY = 'cityflow_quiz_badge';
 
 export default function QuizScreen({ navigation }) {
   const [phase,    setPhase]    = useState('intro'); // intro | playing | result
@@ -13,8 +17,10 @@ export default function QuizScreen({ navigation }) {
   const [selected, setSelected] = useState(null);
   const [score,    setScore]    = useState(0);
   const [answers,  setAnswers]  = useState([]);
+  const resultSaved = useRef(false);
 
   function startQuiz() {
+    resultSaved.current = false;
     setPhase('playing'); setQIdx(0); setScore(0); setSelected(null); setAnswers([]);
   }
 
@@ -31,6 +37,25 @@ export default function QuizScreen({ navigation }) {
   }
 
   const pct = Math.round((score / QUIZ_QUESTIONS.length) * 100);
+
+  useEffect(() => {
+    if (phase !== 'result' || resultSaved.current) return;
+    resultSaved.current = true;
+    const badge = {
+      label: pct >= 80 ? 'City Expert' : pct >= 50 ? 'City Explorer' : 'City Learner',
+      pct,
+      lastScore: score,
+      totalQuestions: QUIZ_QUESTIONS.length,
+      updatedAt: new Date().toISOString(),
+    };
+    (async () => {
+      const previous = Number(await AsyncStorage.getItem(QUIZ_POINTS_KEY)) || 0;
+      await AsyncStorage.multiSet([
+        [QUIZ_POINTS_KEY, String(previous + score)],
+        [QUIZ_BADGE_KEY, JSON.stringify(badge)],
+      ]);
+    })().catch((error) => console.warn('Failed to save quiz points', error));
+  }, [pct, phase, score]);
 
   if (phase === 'intro') return (
     <View style={s.root}>

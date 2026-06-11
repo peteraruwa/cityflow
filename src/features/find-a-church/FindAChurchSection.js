@@ -36,7 +36,7 @@ export default function FindAChurchSection({ navigation }) {
             </View>
             <View style={s.cardHeaderText}>
               <Text style={s.cardTitle}>Parish Directory</Text>
-              <Text style={s.cardSub}>{PARISHES.length} parishes · Search by name or zone</Text>
+              <Text style={s.cardSub}>{PARISHES.length} churches - Search by name or zone</Text>
             </View>
             <View style={s.searchPill}>
               <Search size={11} color="rgba(235,227,214,0.5)" strokeWidth={2} />
@@ -65,7 +65,7 @@ export default function FindAChurchSection({ navigation }) {
 
           <View style={s.zoneRow}>
             <MapPin size={10} color="rgba(196,141,56,0.6)" strokeWidth={2} style={{ marginRight: 4 }} />
-            <Text style={s.zoneText}>Covering all zones · Redemption City of God</Text>
+            <Text style={s.zoneText}>Covering all zones - Redemption City of God</Text>
           </View>
         </LinearGradient>
       </TouchableOpacity>
