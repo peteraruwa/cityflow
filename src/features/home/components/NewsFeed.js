@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { useFocusEffect } from '@react-navigation/native';
 import { Megaphone, AlertCircle, Navigation, Bell, ChevronRight, ExternalLink } from 'lucide-react-native';
 import { db } from '../../../shared/config/firebase';
 import { C } from '../../../shared/constants/theme';
@@ -10,9 +11,11 @@ export default function NewsFeed({ tr, onLostFoundPress, onNewsPress }) {
     const [news, setNews] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadNews();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            loadNews();
+        }, [])
+    );
 
     const loadNews = async () => {
         try {
@@ -21,7 +24,7 @@ export default function NewsFeed({ tr, onLostFoundPress, onNewsPress }) {
             const newsList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
-            }));
+            })).filter((item) => item.visible !== false);
             setNews(newsList);
         } catch (error) {
             console.error('Error loading news:', error);

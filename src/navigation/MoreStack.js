@@ -19,12 +19,15 @@ import NotificationsScreen     from '../features/notifications/NotificationsScre
 import NewsDetailScreen        from '../features/notifications/NewsDetailScreen';
 import EventDetailScreen       from '../features/events/EventDetailScreen';
 import AdminDashboardScreen    from '../features/admin/AdminDashboardScreen';
+import { C } from '../shared/constants/theme';
+import { usePrefs } from '../shared/context/PrefsContext';
 
 const Stack = createNativeStackNavigator();
 
 export default function MoreStack({ onLogout, onResetApp }) {
+  const { colorScheme } = usePrefs();
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false, contentStyle:{ backgroundColor:'#08011A' } }}>
+    <Stack.Navigator key={colorScheme} screenOptions={{ headerShown: false, contentStyle:{ backgroundColor:C.bg } }}>
       <Stack.Screen name="MoreMain"          component={MoreScreen} initialParams={{ onLogout }} />
       <Stack.Screen name="Emergency"         component={EmergencyScreen} />
       <Stack.Screen name="AIAssistant"       component={AIAssistantScreen} />

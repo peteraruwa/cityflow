@@ -1,30 +1,38 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput,
+  Alert, Image, View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import {
   Package, MapPin, Clock, Phone, Shield, ChevronDown, ChevronUp,
-  Tag, Send, CheckCircle, User, ChevronLeft,
+  Tag, Send, CheckCircle, User, ChevronLeft, Camera, Users,
 } from 'lucide-react-native';
 import { C } from '../../shared/constants/theme';
 import { FOUND_ITEMS, CATS_LOST } from '../../shared/data';
-import { auth, db } from '../../shared/config/firebase';
+import { auth, db, storage } from '../../shared/config/firebase';
 import { useUserProfile } from '../../shared/context/UserContext';
 import { CAMP_LOCATIONS } from '../navigation/data/locations';
 
 const PEND_COLOR = '#C48D38';
 const CLMD_COLOR = '#3DAA6A';
+const APPR_COLOR = '#9458E0';
 
 const LOCATION_SUGGESTIONS = CAMP_LOCATIONS
   .map((location) => location.shortName || location.name)
   .filter(Boolean);
 const QUICK_LOCATIONS = LOCATION_SUGGESTIONS.slice(0, 10);
 const EMPTY_FORM = {
+  reportKind: 'item',
   itemName: '',
+  personName: '',
+  age: '',
+  gender: '',
+  lastSeenWearing: '',
   category: '',
   description: '',
   dateLost: '',
@@ -33,6 +41,8 @@ const EMPTY_FORM = {
   ownerName: '',
   ownerPhone: '',
   ownerEmail: '',
+  relationship: '',
+  photo: null,
 };
 
 export default function LostAndFoundScreen() {
@@ -43,11 +53,61 @@ export default function LostAndFoundScreen() {
   const [submitted,  setSubmitted]  = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [remoteItems, setRemoteItems] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadApprovedReports() {
+      try {
+        const snap = await getDocs(query(collection(db, 'lostAndFoundReports'), orderBy('createdAt', 'desc')));
+        const approved = snap.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .filter((item) => ['approved', 'claimed', 'resolved'].includes(String(item.status || '').toLowerCase()))
+          .map(mapReportToFoundItem);
+        if (mounted) setRemoteItems(approved);
+      } catch (err) {
+        console.warn('Could not load approved lost and found reports:', err?.code || err?.message);
+      }
+    }
+
+    loadApprovedReports();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const foundItems = useMemo(() => [...remoteItems, ...FOUND_ITEMS], [remoteItems]);
 
   function upd(field, val) {
     setSubmitError('');
     setForm(f => ({ ...f, [field]:val }));
+  }
+
+  async function pickPhoto(source = 'library') {
+    try {
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('Permission needed', source === 'camera'
+          ? 'Camera permission is required to take a report photo.'
+          : 'Photo library permission is required to attach a report photo.');
+        return;
+      }
+
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.65 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.65 });
+
+      if (!result.canceled && result.assets?.[0]) {
+        upd('photo', result.assets[0]);
+      }
+    } catch (err) {
+      Alert.alert('Photo unavailable', err?.message || 'Please try again.');
+    }
   }
 
   const locationQuery = form.locationLost.trim().toLowerCase();
@@ -60,7 +120,9 @@ export default function LostAndFoundScreen() {
         .slice(0, 6);
 
   async function handleSubmit() {
-    if (!form.itemName.trim() || !form.ownerName.trim() || !form.ownerPhone.trim()) return;
+    const isMissingPerson = form.reportKind === 'person';
+    const subjectName = isMissingPerson ? form.personName.trim() : form.itemName.trim();
+    if (!subjectName || !form.ownerName.trim() || !form.ownerPhone.trim()) return;
     setSubmitting(true);
     setSubmitError('');
 
@@ -69,8 +131,16 @@ export default function LostAndFoundScreen() {
     const profileName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
 
     try {
+      const uploadedPhoto = form.photo
+        ? await uploadReportPhoto(form.photo, firebaseUser?.uid || user?.uid || ownerEmail || 'anonymous')
+        : null;
       await addDoc(collection(db, 'lostAndFoundReports'), {
-        itemName: form.itemName.trim(),
+        itemName: isMissingPerson ? form.personName.trim() : form.itemName.trim(),
+        personName: isMissingPerson ? form.personName.trim() : '',
+        age: isMissingPerson ? form.age.trim() : '',
+        gender: isMissingPerson ? form.gender.trim() : '',
+        lastSeenWearing: isMissingPerson ? form.lastSeenWearing.trim() : '',
+        relationship: form.relationship.trim(),
         category: (form.category || 'other').trim(),
         description: form.description.trim(),
         dateLost: form.dateLost.trim(),
@@ -82,7 +152,11 @@ export default function LostAndFoundScreen() {
         userId: firebaseUser?.uid || user?.uid || ownerEmail || 'anonymous',
         userName: profileName || user?.displayName || form.ownerName.trim(),
         status: 'pending',
-        type: 'lost',
+        approvedForNews: false,
+        type: isMissingPerson ? 'missing_person' : 'lost_item',
+        photoUrl: uploadedPhoto?.url || '',
+        photoPath: uploadedPhoto?.path || '',
+        photoMeta: uploadedPhoto?.meta || null,
         createdAt: serverTimestamp(),
       });
       setSubmitted(true);
@@ -132,10 +206,13 @@ export default function LostAndFoundScreen() {
 
       {subTab === 'found' && (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-          <Text style={s.custodyTxt}>{FOUND_ITEMS.length} ITEMS CURRENTLY IN CUSTODY</Text>
-          {FOUND_ITEMS.map(item => {
+          <Text style={s.custodyTxt}>{foundItems.length} ITEMS CURRENTLY IN CUSTODY</Text>
+          {foundItems.map(item => {
             const open    = expandedId === item.id;
-            const claimed = item.status === 'claimed';
+            const status = String(item.status || 'pending').toLowerCase();
+            const claimed = status === 'claimed' || status === 'resolved';
+            const approved = status === 'approved';
+            const statusColor = claimed ? CLMD_COLOR : approved ? APPR_COLOR : PEND_COLOR;
             return (
               <View key={item.id} style={s.itemCard}>
                 <TouchableOpacity
@@ -149,9 +226,9 @@ export default function LostAndFoundScreen() {
                   <View style={{flex:1, minWidth:0}}>
                     <View style={s.itemTopRow}>
                       <Text style={s.itemName} numberOfLines={1}>{item.item}</Text>
-                      <View style={[s.statusBadge, claimed?s.statusClaimed:s.statusPending]}>
-                        <Text style={[s.statusTxt, {color:claimed?CLMD_COLOR:PEND_COLOR}]}>
-                          {claimed?'Claimed':'Pending'}
+                      <View style={[s.statusBadge, claimed ? s.statusClaimed : approved ? s.statusApproved : s.statusPending]}>
+                        <Text style={[s.statusTxt, {color:statusColor}]}>
+                          {claimed ? 'Claimed' : approved ? 'Approved' : 'Pending'}
                         </Text>
                       </View>
                     </View>
@@ -223,20 +300,71 @@ export default function LostAndFoundScreen() {
               <View style={s.formCard}>
                 <View style={s.formSectionTitle}>
                   <Tag size={14} color={C.gold} strokeWidth={1.8}/>
-                  <Text style={s.formSectionTitleTxt}> Item Details</Text>
+                  <Text style={s.formSectionTitleTxt}> Report Details</Text>
                 </View>
-                <Text style={s.label}>ITEM NAME *</Text>
-                <TextInput style={inputStyle} value={form.itemName} onChangeText={v=>upd('itemName',v)} placeholder="e.g. Black Samsung Galaxy S21" placeholderTextColor={C.tm}/>
-                <Text style={[s.label,{marginTop:12}]}>CATEGORY</Text>
-                <View style={s.catPills}>
-                  {CATS_LOST.map(c => (
-                    <TouchableOpacity key={c} style={[s.catPill, form.category===c&&s.catPillActive]} onPress={()=>upd('category',c)} activeOpacity={0.8}>
-                      <Text style={[s.catPillTxt, form.category===c&&{color:'#fff'}]}>{c}</Text>
+                <Text style={s.label}>REPORT TYPE</Text>
+                <View style={s.typeSwitch}>
+                  {[
+                    ['item', 'Lost Item', Package],
+                    ['person', 'Missing Person', Users],
+                  ].map(([kind, label, Icon]) => (
+                    <TouchableOpacity key={kind} style={[s.typeBtn, form.reportKind===kind&&s.typeBtnActive]} onPress={()=>upd('reportKind',kind)} activeOpacity={0.8}>
+                      <Icon size={13} color={form.reportKind===kind ? '#fff' : C.ts} strokeWidth={2}/>
+                      <Text style={[s.typeBtnText, form.reportKind===kind&&{color:'#fff'}]}>{label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
+                {form.reportKind === 'person' ? (
+                  <>
+                    <Text style={[s.label,{marginTop:12}]}>MISSING PERSON NAME *</Text>
+                    <TextInput style={inputStyle} value={form.personName} onChangeText={v=>upd('personName',v)} placeholder="e.g. David Adeyemi" placeholderTextColor={C.tm}/>
+                    <View style={s.twoCol}>
+                      <View style={{flex:1}}>
+                        <Text style={[s.label,{marginTop:12}]}>AGE</Text>
+                        <TextInput style={inputStyle} value={form.age} onChangeText={v=>upd('age',v)} placeholder="e.g. 8" placeholderTextColor={C.tm} keyboardType="number-pad"/>
+                      </View>
+                      <View style={{flex:1}}>
+                        <Text style={[s.label,{marginTop:12}]}>GENDER</Text>
+                        <TextInput style={inputStyle} value={form.gender} onChangeText={v=>upd('gender',v)} placeholder="e.g. Female" placeholderTextColor={C.tm}/>
+                      </View>
+                    </View>
+                    <Text style={[s.label,{marginTop:12}]}>LAST SEEN WEARING</Text>
+                    <TextInput style={inputStyle} value={form.lastSeenWearing} onChangeText={v=>upd('lastSeenWearing',v)} placeholder="Clothing, footwear, bag, badge..." placeholderTextColor={C.tm}/>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[s.label,{marginTop:12}]}>ITEM NAME *</Text>
+                    <TextInput style={inputStyle} value={form.itemName} onChangeText={v=>upd('itemName',v)} placeholder="e.g. Black Samsung Galaxy S21" placeholderTextColor={C.tm}/>
+                    <Text style={[s.label,{marginTop:12}]}>CATEGORY</Text>
+                    <View style={s.catPills}>
+                      {CATS_LOST.map(c => (
+                        <TouchableOpacity key={c} style={[s.catPill, form.category===c&&s.catPillActive]} onPress={()=>upd('category',c)} activeOpacity={0.8}>
+                          <Text style={[s.catPillTxt, form.category===c&&{color:'#fff'}]}>{c}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
                 <Text style={[s.label,{marginTop:12}]}>DESCRIPTION</Text>
-                <TextInput style={{...inputStyle, minHeight:80, textAlignVertical:'top'}} value={form.description} onChangeText={v=>upd('description',v)} placeholder="Colour, brand, model, unique identifiers..." placeholderTextColor={C.tm} multiline/>
+                <TextInput style={{...inputStyle, minHeight:80, textAlignVertical:'top'}} value={form.description} onChangeText={v=>upd('description',v)} placeholder={form.reportKind === 'person' ? "Complexion, height, language spoken, medical needs, identifying marks..." : "Colour, brand, model, unique identifiers..."} placeholderTextColor={C.tm} multiline/>
+                <Text style={[s.label,{marginTop:12}]}>PHOTO</Text>
+                <View style={s.photoRow}>
+                  {form.photo?.uri ? (
+                    <Image source={{ uri: form.photo.uri }} style={s.photoPreview} />
+                  ) : (
+                    <View style={s.photoEmpty}>
+                      <Camera size={18} color={C.ts} strokeWidth={1.8}/>
+                    </View>
+                  )}
+                  <View style={{flex:1, gap:7}}>
+                    <TouchableOpacity style={s.photoBtn} onPress={()=>pickPhoto('camera')} activeOpacity={0.8}>
+                      <Text style={s.photoBtnText}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.photoBtn} onPress={()=>pickPhoto('library')} activeOpacity={0.8}>
+                      <Text style={s.photoBtnText}>Choose from Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
               {/* When & Where */}
               <View style={s.formCard}>
@@ -294,6 +422,7 @@ export default function LostAndFoundScreen() {
                   ['ownerName', 'FULL NAME *', 'e.g. Peter Adeyemi', 'default'],
                   ['ownerPhone','PHONE NUMBER *','e.g. 08012345678','phone-pad'],
                   ['ownerEmail','EMAIL (OPTIONAL)','e.g. peter@example.com','email-address'],
+                  ['relationship','RELATIONSHIP / ROLE','e.g. Parent, guardian, owner, security volunteer','default'],
                 ].map(([field,lbl,ph,kb]) => (
                   <View key={field} style={{marginBottom:12}}>
                     <Text style={s.label}>{lbl}</Text>
@@ -305,7 +434,7 @@ export default function LostAndFoundScreen() {
               {!!submitError && <Text style={s.submitError}>{submitError}</Text>}
               <TouchableOpacity onPress={handleSubmit} activeOpacity={0.85} style={{marginBottom:8}}>
                 <LinearGradient
-                  colors={(!form.itemName||!form.ownerName||!form.ownerPhone)?['rgba(113,40,206,0.3)','rgba(113,40,206,0.3)']:['#7128CE','#5A18A8']}
+                  colors={(!(form.reportKind === 'person' ? form.personName : form.itemName)||!form.ownerName||!form.ownerPhone)?['rgba(113,40,206,0.3)','rgba(113,40,206,0.3)']:['#7128CE','#5A18A8']}
                   start={{x:0,y:0}} end={{x:1,y:1}}
                   style={s.submitBtn}
                 >
@@ -343,6 +472,7 @@ const s = StyleSheet.create({
   itemName:        { fontSize: 13.5, fontWeight: '700', color: '#EBE3D6', flex: 1, marginRight: 8, lineHeight: 18 },
   statusBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
   statusPending:   { backgroundColor: 'rgba(196,141,56,0.15)', borderColor: 'rgba(196,141,56,0.3)' },
+  statusApproved:  { backgroundColor: 'rgba(148,88,224,0.15)', borderColor: 'rgba(148,88,224,0.3)' },
   statusClaimed:   { backgroundColor: 'rgba(61,170,106,0.15)', borderColor: 'rgba(61,170,106,0.3)' },
   statusTxt:       { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   itemMeta:        { fontSize: 10, color: '#8C7DA0', marginBottom: 4 },
@@ -364,6 +494,11 @@ const s = StyleSheet.create({
   formSectionTitle:{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   formSectionTitleTxt:{ fontSize: 13, fontWeight: '700', color: '#EBE3D6' },
   label:           { fontSize: 11, fontWeight: '600', color: '#8C7DA0', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 7 },
+  typeSwitch:      { flexDirection: 'row', gap: 8 },
+  typeBtn:         { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(255,255,255,0.04)' },
+  typeBtnActive:   { backgroundColor: '#7128CE', borderColor: 'transparent' },
+  typeBtnText:     { fontSize: 11.5, fontWeight: '700', color: '#8C7DA0' },
+  twoCol:          { flexDirection: 'row', gap: 10 },
   catPills:        { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   catPill:         { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(255,255,255,0.04)' },
   catPillActive:   { backgroundColor: '#7128CE', borderColor: 'transparent' },
@@ -375,6 +510,11 @@ const s = StyleSheet.create({
   locationMatchIconText:{ fontSize: 9, color: '#EBE3D6', fontWeight: '800', letterSpacing: 0.4 },
   locationMatchName:{ fontSize: 12, color: '#EBE3D6', fontWeight: '700' },
   locationMatchSub:{ fontSize: 10.5, color: '#8C7DA0', marginTop: 1 },
+  photoRow:        { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  photoPreview:    { width: 82, height: 82, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.05)' },
+  photoEmpty:      { width: 82, height: 82, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
+  photoBtn:        { paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,88,224,0.28)', backgroundColor: 'rgba(148,88,224,0.1)', alignItems: 'center' },
+  photoBtnText:    { color: '#9458E0', fontSize: 11.5, fontWeight: '800' },
   submitError:     { fontSize: 12, color: '#FFB4A8', lineHeight: 17, textAlign: 'center', marginTop: -4 },
   submitBtn:       { width: '100%', paddingVertical: 14, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   submitBtnTxt:    { fontSize: 14, fontWeight: '600', color: '#fff' },
@@ -386,3 +526,46 @@ const s = StyleSheet.create({
   reportAnotherBtn:{ paddingHorizontal: 32, paddingVertical: 11, borderRadius: 13, backgroundColor: '#7128CE' },
   reportAnotherTxt:{ fontSize: 13, fontWeight: '600', color: '#fff' },
 });
+
+function mapReportToFoundItem(item) {
+  const itemName = item.itemName || item.item || 'Lost item';
+  const created = item.createdAt?.toDate ? item.createdAt.toDate() : null;
+  const isMissingPerson = item.type === 'missing_person';
+  return {
+    id: `report-${item.id}`,
+    item: isMissingPerson ? `Missing Person: ${itemName}` : itemName,
+    category: isMissingPerson ? 'Missing Person' : item.category || 'Other',
+    desc: [
+      item.description,
+      isMissingPerson && item.age ? `Age: ${item.age}` : null,
+      isMissingPerson && item.gender ? `Gender: ${item.gender}` : null,
+      isMissingPerson && item.lastSeenWearing ? `Last seen wearing: ${item.lastSeenWearing}` : null,
+    ].filter(Boolean).join('\n') || 'No description provided.',
+    location: item.location || 'Location not specified',
+    date: created ? created.toLocaleDateString() : item.dateLost || 'Recently',
+    status: item.status || 'approved',
+    ref: item.ref || `LF-${String(item.id).slice(0, 6).toUpperCase()}`,
+  };
+}
+
+async function uploadReportPhoto(photo, ownerId) {
+  const response = await fetch(photo.uri);
+  const blob = await response.blob();
+  const extension = photo.fileName?.split('.').pop() || 'jpg';
+  const path = `lost-found-reports/${ownerId}/${Date.now()}.${extension}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, blob, {
+    contentType: photo.mimeType || 'image/jpeg',
+  });
+  const url = await getDownloadURL(storageRef);
+  return {
+    url,
+    path,
+    meta: {
+      fileName: photo.fileName || '',
+      mimeType: photo.mimeType || 'image/jpeg',
+      width: photo.width || null,
+      height: photo.height || null,
+    },
+  };
+}

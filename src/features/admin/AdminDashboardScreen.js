@@ -38,13 +38,14 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { C } from '../../shared/constants/theme';
 import { db } from '../../shared/config/firebase';
 
-const REPORT_FILTERS = ['all', 'pending', 'claimed', 'resolved'];
-const REPORT_STATUSES = ['pending', 'claimed', 'resolved'];
-const NEWS_CATEGORIES = ['Announcement', 'Service', 'Traffic', 'Event', 'Emergency', 'General'];
+const REPORT_FILTERS = ['all', 'pending', 'approved', 'claimed', 'resolved'];
+const REPORT_STATUSES = ['pending', 'approved', 'claimed', 'resolved'];
+const NEWS_CATEGORIES = ['Announcement', 'Service', 'Traffic', 'Event', 'Emergency', 'Lost & Found', 'General'];
 const EMPTY_NEWS_FORM = {
   title: '',
   content: '',
@@ -66,6 +67,44 @@ function reportTitle(item) {
 
 function reportOwner(item) {
   return item.fullName || item.ownerName || item.userName || 'Unknown owner';
+}
+
+function buildLostFoundNews(report, status) {
+  const statusLabel = status === 'approved' ? 'Approved' : status.charAt(0).toUpperCase() + status.slice(1);
+  const location = report.location || 'Redemption City';
+  const itemName = reportTitle(report);
+  const isMissingPerson = report.type === 'missing_person';
+  const subjectLabel = isMissingPerson ? `Missing Person - ${itemName}` : itemName;
+  const content = status === 'claimed' || status === 'resolved'
+    ? `${subjectLabel} has been marked ${status}. Last known location: ${location}.`
+    : `${subjectLabel} has been approved by security and is now visible in Lost & Found. Last known location: ${location}.`;
+
+  return {
+    title: `Lost & Found ${statusLabel}: ${subjectLabel}`,
+    content,
+    category: 'Lost & Found',
+    urgent: status === 'approved',
+    link: '',
+    sourceType: 'lost_found',
+    sourceId: report.id,
+    sourceStatus: status,
+    visible: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+async function hideLostFoundNews(reportId) {
+  const snap = await getDocs(query(
+    collection(db, 'news'),
+    where('sourceType', '==', 'lost_found'),
+  ));
+  await Promise.all(snap.docs
+    .filter((item) => item.data()?.sourceId === reportId)
+    .map((item) => updateDoc(doc(db, 'news', item.id), {
+      visible: false,
+      updatedAt: serverTimestamp(),
+    })));
 }
 
 export default function AdminDashboardScreen({ navigation }) {
@@ -127,10 +166,17 @@ export default function AdminDashboardScreen({ navigation }) {
     try {
       await updateDoc(doc(db, 'lostAndFoundReports', report.id), {
         status,
+        approvedForNews: status !== 'pending',
         updatedAt: serverTimestamp(),
       });
-      setReports((items) => items.map((item) => (item.id === report.id ? { ...item, status } : item)));
-      setSelectedReport((current) => (current?.id === report.id ? { ...current, status } : current));
+      if (status !== 'pending') {
+        await addDoc(collection(db, 'news'), buildLostFoundNews(report, status));
+      } else {
+        await hideLostFoundNews(report.id);
+      }
+      setReports((items) => items.map((item) => (item.id === report.id ? { ...item, status, approvedForNews: status !== 'pending' } : item)));
+      setSelectedReport((current) => (current?.id === report.id ? { ...current, status, approvedForNews: status !== 'pending' } : current));
+      await loadNews();
     } catch (err) {
       Alert.alert('Status update failed', err?.message || 'Please try again.');
     } finally {

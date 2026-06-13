@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   Bell, BookOpen, Building2, CheckCircle, ChevronLeft, ChevronRight, Church, Heart,
   HelpCircle, Lightbulb, LogOut, Mail, MapPin, MapPinned, PhoneCall, Radio, Send, Settings,
   Shield, Smartphone, Sparkles, User,
 } from 'lucide-react-native';
-import { C } from '../../shared/constants/theme';
+import { C, COLOR_SCHEMES } from '../../shared/constants/theme';
 import { FONTS } from '../../shared/constants/theme';
 import ScreenHeader from '../../shared/components/ScreenHeader';
 import { usePrefs } from '../../shared/context/PrefsContext';
 import { useUserProfile } from '../../shared/context/UserContext';
 import { translateText } from '../../shared/i18n/runtimeTranslator';
+import { auth, db } from '../../shared/config/firebase';
 
 const ADMIN_EMAILS = ['admin@cityflow.com'];
 
@@ -80,7 +82,7 @@ const LANGS = [
 
 export default function MoreScreen({ navigation, route }) {
   const onLogout = route?.params?.onLogout;
-  const { language } = usePrefs();
+  const { language, setLanguage } = usePrefs();
   const { user } = useUserProfile();
   const tr = (value) => translateText(value, language);
   const isAdmin = ADMIN_EMAILS.includes(String(user?.email || '').trim().toLowerCase());
@@ -88,10 +90,49 @@ export default function MoreScreen({ navigation, route }) {
   const [cat, setCat] = useState('General');
   const [msg, setMsg] = useState('');
   const [sent, setSent] = useState(false);
+  const [sendingFeedback, setSendingFeedback] = useState(false);
+
+  async function submitFeedback() {
+    if (!msg.trim() || sendingFeedback) return;
+
+    setSendingFeedback(true);
+    const firebaseUser = auth?.currentUser;
+    const email = user?.email || firebaseUser?.email || '';
+    const name = user?.displayName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || email || 'Guest';
+    const subject = `CityFlow feedback: ${cat}`;
+    const body = [
+      msg.trim(),
+      '',
+      `Category: ${cat}`,
+      `From: ${name}`,
+      email ? `Email: ${email}` : null,
+    ].filter(Boolean).join('\n');
+
+    try {
+      await addDoc(collection(db, 'supportFeedback'), {
+        category: cat,
+        message: msg.trim(),
+        developerEmail: 'serialquest@gmail.com',
+        userId: firebaseUser?.uid || user?.uid || email || 'anonymous',
+        userName: name,
+        userEmail: email,
+        status: 'submitted',
+        createdAt: serverTimestamp(),
+      });
+
+      const mailto = `mailto:serialquest@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      await Linking.openURL(mailto);
+      setSent(true);
+    } catch (err) {
+      Alert.alert('Could not send feedback', err?.message || 'Please try again.');
+    } finally {
+      setSendingFeedback(false);
+    }
+  }
 
   if (page === 'support') {
     return (
-      <View style={s.root}>
+      <View style={[s.root, { backgroundColor: C.bg }]}>
         <SubHeader title={tr("Contact Support")} sub={tr("Report issues & get help")} onBack={() => setPage(null)} />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
           {sent ? (
@@ -118,9 +159,10 @@ export default function MoreScreen({ navigation, route }) {
                 multiline
                 style={s.input}
               />
-              <TouchableOpacity onPress={() => msg.trim() && setSent(true)} activeOpacity={0.85} style={[s.submit, !msg.trim() && s.submitDisabled]}>
-                <Send size={13} color="#fff" strokeWidth={2} />
-                <Text style={s.submitText}>{tr("Submit Report")}</Text>
+              <TouchableOpacity onPress={submitFeedback} activeOpacity={0.85} style={[s.submit, (!msg.trim() || sendingFeedback) && s.submitDisabled]}>
+                {sendingFeedback
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <><Send size={13} color="#fff" strokeWidth={2} /><Text style={s.submitText}>{tr("Submit Report")}</Text></>}
               </TouchableOpacity>
             </>
           )}
@@ -132,8 +174,8 @@ export default function MoreScreen({ navigation, route }) {
   if (page) {
     const info = PAGES[page];
     return (
-      <View style={s.root}>
-        <SubHeader title={info.title} sub={info.sub} onBack={() => setPage(null)} />
+      <View style={[s.root, { backgroundColor: C.bg }]}>
+        <SubHeader title={tr(info.title)} sub={tr(info.sub)} onBack={() => setPage(null)} />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
           {page === 'settings' && (
             <View style={s.langPicker}>
@@ -152,8 +194,8 @@ export default function MoreScreen({ navigation, route }) {
                   >
                     <Text style={[s.langOptionCode, active && s.langOptionCodeActive]}>{item.code.toUpperCase()}</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.langOptionLabel}>{item.native}</Text>
-                      <Text style={s.langOptionSub}>{item.label}</Text>
+                      <Text style={s.langOptionLabel}>{tr(item.native)}</Text>
+                      <Text style={s.langOptionSub}>{tr(item.label)}</Text>
                     </View>
                     <View style={[s.langDot, active && s.langDotActive]} />
                   </TouchableOpacity>
@@ -163,12 +205,12 @@ export default function MoreScreen({ navigation, route }) {
           )}
           {info.rows.map((row, index) => (
             <View key={index} style={s.infoRow}>
-              <Text style={s.infoText}>{row}</Text>
+              <Text style={s.infoText}>{tr(row)}</Text>
             </View>
           ))}
           {page === 'aboutcity' && (
             <TouchableOpacity style={s.outlineBtn} onPress={() => navigation.navigate('FunFacts')} activeOpacity={0.82}>
-              <Text style={s.outlineText}>View Fun Facts</Text>
+              <Text style={s.outlineText}>{tr("View Fun Facts")}</Text>
               <ChevronRight size={14} color={C.gold} />
             </TouchableOpacity>
           )}
@@ -178,7 +220,7 @@ export default function MoreScreen({ navigation, route }) {
   }
 
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <ScreenHeader title="More" sub="Account, info & support" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
         {isAdmin && (
@@ -319,6 +361,8 @@ export function MoreSettingsScreen({ navigation, onResetApp }) {
   const {
     language,
     setLanguage,
+    colorScheme,
+    setColorScheme,
     resetSettings,
     pushNotifications,
     togglePushNotifications,
@@ -354,7 +398,7 @@ export function MoreSettingsScreen({ navigation, onResetApp }) {
   };
 
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <SubHeader title={tr("Settings")} sub={tr("App preferences")} onBack={() => navigation.goBack()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.aboutScroll}>
         <SectionKicker>{tr("Language")}</SectionKicker>
@@ -376,6 +420,29 @@ export function MoreSettingsScreen({ navigation, onResetApp }) {
                   <Text style={s.settingsLangName}>{tr(item.name)}</Text>
                 </View>
                 {active && <CheckCircle size={16} color={C.purpleL} strokeWidth={2} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <SectionKicker>{tr("Colour Scheme")}</SectionKicker>
+        <View style={s.schemeGrid}>
+          {Object.values(COLOR_SCHEMES).map((scheme) => {
+            const active = colorScheme === scheme.id;
+            return (
+              <TouchableOpacity
+                key={scheme.id}
+                onPress={() => setColorScheme(scheme.id)}
+                activeOpacity={0.82}
+                style={[s.schemeCard, active && s.schemeCardActive]}
+              >
+                <View style={s.schemeSwatches}>
+                  <View style={[s.schemeSwatch, { backgroundColor: scheme.bg }]} />
+                  <View style={[s.schemeSwatch, { backgroundColor: scheme.purple }]} />
+                  <View style={[s.schemeSwatch, { backgroundColor: scheme.gold }]} />
+                </View>
+                <Text style={[s.schemeLabel, active && s.schemeLabelActive]}>{tr(scheme.label)}</Text>
+                {active && <CheckCircle size={15} color={C.purpleL} strokeWidth={2} />}
               </TouchableOpacity>
             );
           })}
@@ -420,7 +487,7 @@ export function PrivacyScreen({ navigation }) {
   const [deletionRequested, setDeletionRequested] = useState(false);
 
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <SubHeader title={tr("Privacy")} sub={tr("Data & permissions")} onBack={() => navigation.goBack()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.aboutScroll}>
         <InfoSection Icon={Shield} color="#4A8A5A" title="Your data, your control">
@@ -469,7 +536,7 @@ export function AboutCityFlowScreen({ navigation }) {
   const { language } = usePrefs();
   const tr = (value) => translateText(value, language);
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <SubHeader title={tr("About CityFlow")} onBack={() => navigation.goBack()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.aboutScrollCityFlow}>
         <View style={s.aboutLogoWrap}>
@@ -494,7 +561,7 @@ export function AboutRCCGScreen({ navigation }) {
   const { language } = usePrefs();
   const tr = (value) => translateText(value, language);
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <SubHeader title={tr("About RCCG")} sub={tr("The Redeemed Christian Church of God")} onBack={() => navigation.goBack()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.aboutScroll}>
         <InfoSection Icon={BookOpen} color="#7128CE" title="History">
@@ -515,7 +582,7 @@ export function AboutRedemptionCityScreen({ navigation }) {
   const { language } = usePrefs();
   const tr = (value) => translateText(value, language);
   return (
-    <View style={s.root}>
+    <View style={[s.root, { backgroundColor: C.bg }]}>
       <SubHeader title={tr("About Redemption City")} onBack={() => navigation.goBack()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.aboutScroll}>
         <InfoSection Icon={BookOpen} color="#7128CE" title="History">
@@ -652,6 +719,13 @@ const s = StyleSheet.create({
   toggleKnobOn: { transform: [{ translateX: 18 }] },
   pageKicker: { fontSize: 10, fontWeight: '700', color: C.tm, letterSpacing: 1.2, textTransform: 'uppercase', marginHorizontal: 2, marginTop: 6, marginBottom: 10 },
   settingsGroup: { gap: 9, marginBottom: 18 },
+  schemeGrid: { gap: 9, marginBottom: 18 },
+  schemeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b },
+  schemeCardActive: { backgroundColor: 'rgba(148,88,224,0.12)', borderColor: 'rgba(148,88,224,0.5)' },
+  schemeSwatches: { flexDirection: 'row', gap: 4 },
+  schemeSwatch: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
+  schemeLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: C.tp },
+  schemeLabelActive: { color: C.purpleL },
   settingsGroupPrivacy: { gap: 9, marginBottom: 18 },
   settingsLangRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b },
   settingsLangRowActive: { backgroundColor: 'rgba(113,40,206,0.12)', borderColor: 'rgba(148,88,224,0.5)' },

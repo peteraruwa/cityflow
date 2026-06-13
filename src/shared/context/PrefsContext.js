@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setActiveLanguage } from '../i18n/runtimeTranslator';
+import { applyColorScheme } from '../constants/theme';
 
 const PrefsContext = createContext();
 
@@ -13,6 +14,7 @@ export const PrefsProvider = ({ children }) => {
   const [inAppSounds, setInAppSounds] = useState(false);
   const [usageAnalytics, setUsageAnalytics] = useState(true);
   const [personalisedSuggestions, setPersonalisedSuggestions] = useState(false);
+  const [colorScheme, setColorSchemeState] = useState('royal');
 
   const applyDefaultPrefs = () => {
     setLanguageState('en');
@@ -23,6 +25,8 @@ export const PrefsProvider = ({ children }) => {
     setInAppSounds(false);
     setUsageAnalytics(true);
     setPersonalisedSuggestions(false);
+    setColorSchemeState('royal');
+    applyColorScheme('royal');
   };
 
   useEffect(() => {
@@ -37,6 +41,7 @@ export const PrefsProvider = ({ children }) => {
           savedAnalytics,
           savedPersonalised,
           savedLanguageSelected,
+          savedColorScheme,
         ] = await Promise.all([
           AsyncStorage.getItem('app_language'),
           AsyncStorage.getItem('app_theme'),
@@ -46,6 +51,7 @@ export const PrefsProvider = ({ children }) => {
           AsyncStorage.getItem('pref_usage_analytics'),
           AsyncStorage.getItem('pref_personalised_suggestions'),
           AsyncStorage.getItem('app_language_selected'),
+          AsyncStorage.getItem('app_color_scheme'),
         ]);
         if (savedLang && savedLanguageSelected === 'true') {
           setLanguageState(savedLang);
@@ -60,6 +66,12 @@ export const PrefsProvider = ({ children }) => {
         if (savedSounds !== null) setInAppSounds(savedSounds === 'true');
         if (savedAnalytics !== null) setUsageAnalytics(savedAnalytics === 'true');
         if (savedPersonalised !== null) setPersonalisedSuggestions(savedPersonalised === 'true');
+        if (savedColorScheme) {
+          setColorSchemeState(savedColorScheme);
+          applyColorScheme(savedColorScheme);
+        } else {
+          applyColorScheme('royal');
+        }
       } catch (e) {
         console.warn('Failed to load prefs', e);
       }
@@ -82,6 +94,12 @@ export const PrefsProvider = ({ children }) => {
     await AsyncStorage.setItem('app_theme', next ? 'dark' : 'light');
   };
 
+  const setColorScheme = async (scheme) => {
+    setColorSchemeState(scheme);
+    applyColorScheme(scheme);
+    await AsyncStorage.setItem('app_color_scheme', scheme);
+  };
+
   const setBooleanPref = async (key, setter, value) => {
     setter(value);
     await AsyncStorage.setItem(key, String(value));
@@ -100,6 +118,7 @@ export const PrefsProvider = ({ children }) => {
       'pref_in_app_sounds',
       'pref_usage_analytics',
       'pref_personalised_suggestions',
+      'app_color_scheme',
       'cityflow_onboarding_complete',
     ]);
   };
@@ -120,6 +139,8 @@ export const PrefsProvider = ({ children }) => {
     setInAppSounds: (value) => setBooleanPref('pref_in_app_sounds', setInAppSounds, value),
     toggleInAppSounds: () => toggleBooleanPref('pref_in_app_sounds', setInAppSounds, inAppSounds),
     usageAnalytics,
+    colorScheme,
+    setColorScheme,
     setUsageAnalytics: (value) => setBooleanPref('pref_usage_analytics', setUsageAnalytics, value),
     toggleUsageAnalytics: () => toggleBooleanPref('pref_usage_analytics', setUsageAnalytics, usageAnalytics),
     personalisedSuggestions,

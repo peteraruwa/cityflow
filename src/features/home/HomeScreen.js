@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   AlertCircle,
   ArrowRight,
@@ -57,7 +58,7 @@ import { useUserProfile } from "../../shared/context/UserContext";
 import { translateText } from "../../shared/i18n/runtimeTranslator";
 import { allQuotes } from "../../shared/data/quotes";
 import { GALLERY } from "../picture-day/data/gallery";
-import { NEWS_ITEMS } from "../notifications/notificationData";
+import { db } from "../../shared/config/firebase";
 import NewsFeed from './components/NewsFeed';
 // Import the real WeatherWidget component
 import WeatherWidget from '../../features/weather-widget/WeatherWidget';
@@ -255,6 +256,37 @@ function NewsTicker({ tr, active, onTap }) {
   const x = useRef(new Animated.Value(0)).current;
   const loopRef = useRef(null);
   const [loopWidth, setLoopWidth] = useState(0);
+  const [tickerItems, setTickerItems] = useState(TICKER_ITEMS);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadTickerItems() {
+      try {
+        const snap = await getDocs(query(collection(db, "news"), orderBy("createdAt", "desc"), limit(20)));
+        const cutoff = Date.now() - (2 * 24 * 60 * 60 * 1000);
+        const liveItems = snap.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .filter((item) => item.visible !== false)
+          .filter((item) => {
+            const date = item.createdAt?.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
+            return Number.isFinite(date.getTime()) && date.getTime() >= cutoff;
+          })
+          .map((item) => {
+            const prefix = item.category === "Lost & Found" || item.sourceType === "lost_found" ? "Lost & Found" : item.category || "News";
+            return `${prefix}: ${item.title}`;
+          });
+        if (mounted && liveItems.length > 0) setTickerItems(liveItems);
+      } catch (error) {
+        console.warn("Could not load ticker news:", error?.code || error?.message);
+      }
+    }
+
+    if (active) loadTickerItems();
+    return () => {
+      mounted = false;
+    };
+  }, [active]);
 
   useEffect(() => {
     loopRef.current?.stop();
@@ -291,7 +323,7 @@ function NewsTicker({ tr, active, onTap }) {
               style={s.tickerGroup}
               onLayout={rep === 0 ? (event) => setLoopWidth(event.nativeEvent.layout.width) : undefined}
             >
-              {TICKER_ITEMS.map((item, index) => (
+              {tickerItems.map((item, index) => (
                 <View key={`${item}-${index}`} style={s.tickerItem}>
                   <Text style={s.tickerText}>{tr(item)}</Text>
                   <View style={s.tickerDot} />

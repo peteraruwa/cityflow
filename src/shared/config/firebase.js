@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 
 import {
@@ -59,4 +60,5 @@ if (Platform.OS === 'web') {
 
 export { auth };
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 console.log('🗄️ Firestore instance exported');

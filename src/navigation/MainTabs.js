@@ -8,23 +8,26 @@ import CityRideScreen       from '../features/cityride/CityRideScreen';
 import ExploreScreen        from '../features/explore/ExploreScreen';
 import LostAndFoundScreen   from '../features/lost-found/LostAndFoundScreen';
 import { C, FONTS } from '../shared/constants/theme';
+import { usePrefs } from '../shared/context/PrefsContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs({ onLogout, onResetApp }) {
+  const { colorScheme, language } = usePrefs();
   return (
     <Tab.Navigator
+      key={`${colorScheme}-${language}`}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: 'rgba(7,1,18,0.97)',
-          borderTopColor: 'rgba(255,255,255,0.07)',
+          backgroundColor: colorScheme === 'light' ? 'rgba(247,244,239,0.97)' : C.bg,
+          borderTopColor: C.b,
           borderTopWidth: 1,
           paddingBottom: 28,
           paddingTop: 10,
           height: 80,
         },
-        tabBarActiveTintColor:   C.gold,
+        tabBarActiveTintColor:   C.purpleL,
         tabBarInactiveTintColor: C.ts,
         tabBarLabelStyle: { fontSize:9, fontWeight:'600' },
       })}

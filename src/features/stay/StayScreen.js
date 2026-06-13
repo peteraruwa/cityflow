@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import {
   BedDouble,
   CalendarDays,
@@ -36,6 +36,9 @@ const ROOM_TYPES = [
   { id: 'executive', label: 'Executive Suite', price: 45000, note: 'Premium comfort and priority support' },
 ];
 
+const BASE_CAPACITY = { standard: 4, family: 2, executive: 1 };
+const ACTIVE_BOOKING_STATUSES = ['pending_confirmation', 'pending_payment', 'confirmed', 'checked_in'];
+
 function fallbackPhone(index) {
   return ['08067592352', '08058047900', '09161934554', '09022024174'][index % 4];
 }
@@ -51,6 +54,51 @@ function stayNights(checkIn, checkOut) {
   return Math.max(1, Math.round((end - start) / 86400000));
 }
 
+function getCapacity(accommodation) {
+  const name = String(accommodation?.name || '').toLowerCase();
+  if (name.includes('vip') || name.includes('executive')) return { standard: 2, family: 2, executive: 3 };
+  if (name.includes('family')) return { standard: 3, family: 4, executive: 1 };
+  return BASE_CAPACITY;
+}
+
+function bookingRoomId(booking) {
+  const label = String(booking.roomType || '').toLowerCase();
+  if (booking.roomTypeId) return booking.roomTypeId;
+  if (label.includes('family')) return 'family';
+  if (label.includes('executive')) return 'executive';
+  return 'standard';
+}
+
+function bookingOverlaps(booking, checkIn, checkOut) {
+  const bookingStart = Date.parse(booking.checkIn);
+  const bookingEnd = Date.parse(booking.checkOut);
+  const start = Date.parse(checkIn);
+  const end = Date.parse(checkOut);
+
+  if (!Number.isFinite(bookingStart) || !Number.isFinite(bookingEnd)) return false;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return bookingEnd >= today.getTime();
+  }
+
+  return bookingStart < end && start < bookingEnd;
+}
+
+function getAvailability(accommodation, bookings, checkIn, checkOut) {
+  const capacity = getCapacity(accommodation);
+  const activeBookings = bookings.filter((booking) => (
+    booking.accommodationId === accommodation?.id
+    && ACTIVE_BOOKING_STATUSES.includes(String(booking.status || '').toLowerCase())
+    && bookingOverlaps(booking, checkIn, checkOut)
+  ));
+
+  return Object.fromEntries(Object.entries(capacity).map(([roomId, count]) => {
+    const booked = activeBookings.filter((booking) => bookingRoomId(booking) === roomId).length;
+    return [roomId, Math.max(0, count - booked)];
+  }));
+}
+
 export default function StayScreen({ navigation }) {
   const { user } = useUserProfile();
   const [query, setQuery] = useState('');
@@ -61,6 +109,8 @@ export default function StayScreen({ navigation }) {
   const [guests, setGuests] = useState('1');
   const [booking, setBooking] = useState(false);
   const [confirmed, setConfirmed] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
 
   const accommodations = useMemo(
     () => CAMP_LOCATIONS
@@ -81,6 +131,24 @@ export default function StayScreen({ navigation }) {
   const nights = stayNights(checkIn, checkOut);
   const serviceFee = 1500;
   const total = selectedRoom.price * nights + serviceFee;
+  const availability = getAvailability(selected, bookings, checkIn, checkOut);
+  const selectedAvailable = availability[roomType] ?? 0;
+
+  useEffect(() => {
+    loadBookings();
+  }, []);
+
+  async function loadBookings() {
+    setLoadingAvailability(true);
+    try {
+      const snap = await getDocs(query(collection(db, 'accommodationBookings'), orderBy('createdAt', 'desc')));
+      setBookings(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+    } catch (err) {
+      console.warn('Could not load accommodation availability:', err?.code || err?.message);
+    } finally {
+      setLoadingAvailability(false);
+    }
+  }
 
   async function callAccommodation(phone) {
     const cleaned = String(phone || '').replace(/\s+/g, '');
@@ -96,6 +164,10 @@ export default function StayScreen({ navigation }) {
       Alert.alert('Booking details needed', 'Please choose accommodation, check-in, and check-out dates.');
       return;
     }
+    if (selectedAvailable <= 0) {
+      Alert.alert('Room not available', 'This accommodation and room type is taken for those dates. Please choose another option.');
+      return;
+    }
 
     setBooking(true);
     const firebaseUser = auth?.currentUser;
@@ -107,20 +179,23 @@ export default function StayScreen({ navigation }) {
         accommodationId: selected.id,
         accommodationName: selected.name,
         accommodationPhone: selected.phone,
+        roomTypeId: selectedRoom.id,
         roomType: selectedRoom.label,
         checkIn: checkIn.trim(),
         checkOut: checkOut.trim(),
         nights,
         guests: guests.trim() || '1',
         amount: total,
-        status: 'pending_payment',
+        status: 'pending_confirmation',
         userId: firebaseUser?.uid || user?.uid || email || 'anonymous',
         userName: name,
         email,
+        bookingCode: `STAY-${Date.now().toString(36).toUpperCase()}`,
         createdAt: serverTimestamp(),
       };
       const ref = await addDoc(collection(db, 'accommodationBookings'), payload);
       setConfirmed({ ...payload, id: ref.id });
+      setBookings((items) => [{ ...payload, id: ref.id }, ...items]);
     } catch (err) {
       Alert.alert('Booking failed', err?.message || 'Please try again.');
     } finally {
@@ -179,9 +254,13 @@ export default function StayScreen({ navigation }) {
         </View>
 
         <Text style={s.sectionLabel}>Choose accommodation</Text>
+        {loadingAvailability && <Text style={s.availabilityHint}>Checking live availability...</Text>}
         <View style={s.stayList}>
           {filtered.map((item) => {
             const active = selected?.id === item.id;
+            const itemAvailability = getAvailability(item, bookings, checkIn, checkOut);
+            const totalAvailable = Object.values(itemAvailability).reduce((sum, value) => sum + value, 0);
+            const isAvailable = totalAvailable > 0;
             return (
               <TouchableOpacity key={item.id} onPress={() => setSelectedId(item.id)} style={[s.stayCard, active && s.stayCardActive]} activeOpacity={0.84}>
                 <View style={[s.stayIcon, active && s.stayIconActive]}>
@@ -190,6 +269,11 @@ export default function StayScreen({ navigation }) {
                 <View style={{ flex: 1 }}>
                   <Text style={s.stayName}>{item.name}</Text>
                   <Text style={s.stayDesc}>{item.description}</Text>
+                  <View style={[s.availabilityPill, isAvailable ? s.availablePill : s.takenPill]}>
+                    <Text style={[s.availabilityText, { color: isAvailable ? C.green : C.red }]}>
+                      {isAvailable ? `${totalAvailable} room(s) available` : 'Taken / not available'}
+                    </Text>
+                  </View>
                   <View style={s.stayMeta}>
                     <MapPin size={10} color={C.gold} strokeWidth={2} />
                     <Text style={s.stayMetaText}>{item.shortName || item.subcategory || 'Redemption City'}</Text>
@@ -207,12 +291,14 @@ export default function StayScreen({ navigation }) {
         <Text style={s.sectionLabel}>Room type</Text>
         {ROOM_TYPES.map((room) => {
           const active = roomType === room.id;
+          const roomAvailable = availability[room.id] ?? 0;
+          const taken = roomAvailable <= 0;
           return (
-            <TouchableOpacity key={room.id} onPress={() => setRoomType(room.id)} style={[s.roomCard, active && s.roomCardActive]} activeOpacity={0.84}>
+            <TouchableOpacity key={room.id} onPress={() => setRoomType(room.id)} style={[s.roomCard, active && s.roomCardActive, taken && s.roomCardTaken]} activeOpacity={0.84}>
               <BedDouble size={18} color={active ? C.purpleL : C.ts} strokeWidth={1.8} />
               <View style={{ flex: 1 }}>
                 <Text style={s.roomTitle}>{room.label}</Text>
-                <Text style={s.roomNote}>{room.note}</Text>
+                <Text style={s.roomNote}>{taken ? 'Taken for selected dates' : `${roomAvailable} available - ${room.note}`}</Text>
               </View>
               <Text style={s.roomPrice}>{money(room.price)}</Text>
             </TouchableOpacity>
@@ -235,9 +321,9 @@ export default function StayScreen({ navigation }) {
           <CreditCard size={24} color={C.gold} strokeWidth={1.7} />
         </View>
 
-        <TouchableOpacity onPress={handleBooking} activeOpacity={0.86} style={{ marginBottom: 18 }}>
-          <LinearGradient colors={['#7128CE', '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bookBtn}>
-            {booking ? <ActivityIndicator color="#fff" /> : <Text style={s.bookText}>Book & Pay {money(total)}</Text>}
+        <TouchableOpacity onPress={handleBooking} activeOpacity={0.86} style={{ marginBottom: 18 }} disabled={selectedAvailable <= 0 || booking}>
+          <LinearGradient colors={selectedAvailable <= 0 ? ['rgba(212,79,79,0.38)', 'rgba(212,79,79,0.28)'] : ['#7128CE', '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bookBtn}>
+            {booking ? <ActivityIndicator color="#fff" /> : <Text style={s.bookText}>{selectedAvailable <= 0 ? 'Not Available' : `Book & Pay ${money(total)}`}</Text>}
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
@@ -297,12 +383,18 @@ const s = StyleSheet.create({
   stayIconActive: { backgroundColor: 'rgba(196,141,56,0.13)', borderColor: 'rgba(196,141,56,0.32)' },
   stayName: { fontSize: 13.5, fontWeight: '800', color: C.tp, marginBottom: 3 },
   stayDesc: { fontSize: 11.5, color: C.ts, lineHeight: 17, marginBottom: 7 },
+  availabilityHint: { fontSize: 11, color: C.gold, marginTop: -4, marginBottom: 9 },
+  availabilityPill: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, borderWidth: 1, marginBottom: 7 },
+  availablePill: { backgroundColor: 'rgba(61,170,106,0.12)', borderColor: 'rgba(61,170,106,0.28)' },
+  takenPill: { backgroundColor: 'rgba(212,79,79,0.12)', borderColor: 'rgba(212,79,79,0.28)' },
+  availabilityText: { fontSize: 10, fontWeight: '800' },
   stayMeta: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   stayMetaText: { fontSize: 10.5, color: C.gold, fontWeight: '700', marginLeft: 4 },
   inlinePhone: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 11, backgroundColor: 'rgba(73,189,235,0.1)', borderWidth: 1, borderColor: 'rgba(73,189,235,0.24)' },
   inlinePhoneText: { color: '#49BDEB', fontSize: 11, fontWeight: '700' },
   roomCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, marginBottom: 9 },
   roomCardActive: { backgroundColor: 'rgba(113,40,206,0.12)', borderColor: 'rgba(148,88,224,0.42)' },
+  roomCardTaken: { opacity: 0.62, borderColor: 'rgba(212,79,79,0.22)' },
   roomTitle: { fontSize: 13, color: C.tp, fontWeight: '800' },
   roomNote: { fontSize: 10.5, color: C.ts, marginTop: 2 },
   roomPrice: { fontSize: 13, color: C.gold, fontWeight: '900' },

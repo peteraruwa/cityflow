@@ -40,6 +40,8 @@ import { usePrefs } from '../../../shared/context/PrefsContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_PEEK = 220;
+const MAX_ACCEPTED_ACCURACY_METERS = 100;
+const MAX_MAP_DISTANCE_METERS = 2000;
 
 const PURPLE   = '#7128CE';
 const PURPLE_L = '#9B5CF6';
@@ -105,7 +107,7 @@ const buildMapHTML = () => `
       maxZoom: 19,
     }).addTo(map);
 
-    var userMarker = null, destMarker = null, routeLayer = null;
+    var userMarker = null, userAccuracyCircle = null, destMarker = null, routeLayer = null;
 
     var landmarks = ${JSON.stringify(CAMP_LOCATIONS)};
     landmarks.forEach(function(loc) {
@@ -131,7 +133,7 @@ const buildMapHTML = () => `
     function handleMessage(event) {
       try {
         var msg = JSON.parse(event.data);
-        if (msg.type === 'UPDATE_LOCATION') updateUserLocation(msg.lat, msg.lng);
+        if (msg.type === 'UPDATE_LOCATION') updateUserLocation(msg.lat, msg.lng, msg.accuracy);
         if (msg.type === 'DRAW_ROUTE')  drawRoute(msg.coords, msg.destLat, msg.destLng);
         if (msg.type === 'CLEAR_ROUTE') clearRoute();
         if (msg.type === 'CENTER_USER') {
@@ -140,13 +142,24 @@ const buildMapHTML = () => `
       } catch(e) {}
     }
 
-    function updateUserLocation(lat, lng) {
+    function updateUserLocation(lat, lng, accuracy) {
       var userIcon = L.divIcon({
         className: '',
         html: '<div class="user-pulse"></div>',
         iconSize: [22, 22],
         iconAnchor: [11, 11],
       });
+      if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+      if (accuracy) {
+        userAccuracyCircle = L.circle([lat, lng], {
+          radius: accuracy,
+          color: '${PURPLE_L}',
+          weight: 1,
+          opacity: 0.5,
+          fillColor: '${PURPLE_L}',
+          fillOpacity: 0.08,
+        }).addTo(map);
+      }
       if (!userMarker) {
         userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
         map.setView([lat, lng], 17, { animate: true });
@@ -207,6 +220,59 @@ const formatDistance = (metres) => {
   return `${(metres / 1000).toFixed(1)} km`;
 };
 
+const distanceBetween = (a, b) => {
+  if (!a || !b) return Infinity;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+};
+
+const pointFromLocation = (loc) => ({ latitude: loc.lat, longitude: loc.lng });
+
+const getNearestLandmark = (coords) => {
+  if (!coords) return null;
+  return CAMP_LOCATIONS
+    .map((loc) => ({ ...loc, distance: distanceBetween(coords, pointFromLocation(loc)) }))
+    .sort((a, b) => a.distance - b.distance)[0] || null;
+};
+
+const getValidatedLocationMeta = (coords) => {
+  if (!coords) return { valid: false, message: 'Waiting for current location...' };
+
+  const accuracy = Number(coords.accuracy);
+  if (Number.isFinite(accuracy) && accuracy > MAX_ACCEPTED_ACCURACY_METERS) {
+    return {
+      valid: false,
+      message: `GPS accuracy is ${formatDistance(accuracy)}. Move to an open area for a fix under ${MAX_ACCEPTED_ACCURACY_METERS} m.`,
+    };
+  }
+
+  const distanceFromCamp = distanceBetween(coords, {
+    latitude: CAMP_REGION.latitude,
+    longitude: CAMP_REGION.longitude,
+  });
+  if (distanceFromCamp > MAX_MAP_DISTANCE_METERS) {
+    return {
+      valid: false,
+      message: `Your GPS point is ${formatDistance(distanceFromCamp)} from the mapped camp area. Navigation is limited to within ${formatDistance(MAX_MAP_DISTANCE_METERS)} of Redemption City.`,
+    };
+  }
+
+  const nearest = getNearestLandmark(coords);
+  return {
+    valid: true,
+    accuracy: Number.isFinite(accuracy) ? accuracy : null,
+    distanceFromCamp,
+    nearest,
+  };
+};
+
 const CATEGORY_COLORS = {
   church: '#7128CE',
   accommodation: '#2A7FAB',
@@ -247,6 +313,7 @@ export default function NavigationScreen({ navigation, route }) {
   const locationSub = useRef(null);
   const sheetAnim   = useRef(new Animated.Value(SHEET_PEEK)).current;
   const initialDestApplied = useRef(false);
+  const trustedLocationRef = useRef(null);
 
   const [userLocation,  setUserLocation]  = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -256,6 +323,8 @@ export default function NavigationScreen({ navigation, route }) {
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [mapReady,      setMapReady]      = useState(false);
   const [locationQuery, setLocationQuery] = useState('');
+  const [locationMeta,  setLocationMeta]  = useState(null);
+  const [locationWarning, setLocationWarning] = useState('');
 
   const sendToMap = useCallback((obj) => {
     webviewRef.current?.injectJavaScript(
@@ -263,12 +332,41 @@ export default function NavigationScreen({ navigation, route }) {
     );
   }, []);
 
+  const applyLocationFix = useCallback((loc) => {
+    const coords = loc?.coords || loc;
+    const meta = getValidatedLocationMeta(coords);
+    setLocationMeta(meta);
+
+    if (!meta.valid) {
+      if (trustedLocationRef.current) {
+        setLocationWarning(meta.message);
+      } else {
+        setLocationError(meta.message);
+      }
+      return false;
+    }
+
+    setLocationError(null);
+    setLocationWarning('');
+    trustedLocationRef.current = coords;
+    setUserLocation(coords);
+    sendToMap({
+      type: 'UPDATE_LOCATION',
+      lat: coords.latitude,
+      lng: coords.longitude,
+      accuracy: coords.accuracy,
+    });
+    return true;
+  }, [sendToMap]);
+
   // Location
   useEffect(() => {
     (async () => {
       if (!locationServices) {
         locationSub.current?.remove();
         setUserLocation(null);
+        trustedLocationRef.current = null;
+        setLocationMeta(null);
         setLocationError('Location services are off. Enable them in Settings to use live navigation.');
         return;
       }
@@ -278,22 +376,30 @@ export default function NavigationScreen({ navigation, route }) {
         setLocationError('Location permission denied. Enable it in Settings to use navigation.');
         return;
       }
-      const initial = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setUserLocation(initial.coords);
+      if (Platform.OS === 'android') {
+        await Location.enableNetworkProviderAsync().catch(() => {});
+      }
+      setLocationError('Getting a high-accuracy GPS fix...');
+      const initial = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
+      applyLocationFix(initial);
       locationSub.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 8 },
+        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 3000, distanceInterval: 5 },
         (loc) => {
-          setUserLocation(loc.coords);
-          sendToMap({ type: 'UPDATE_LOCATION', lat: loc.coords.latitude, lng: loc.coords.longitude });
+          applyLocationFix(loc);
         }
       );
     })();
     return () => locationSub.current?.remove();
-  }, [locationServices, sendToMap]);
+  }, [applyLocationFix, locationServices]);
 
   useEffect(() => {
     if (mapReady && userLocation) {
-      sendToMap({ type: 'UPDATE_LOCATION', lat: userLocation.latitude, lng: userLocation.longitude });
+      sendToMap({
+        type: 'UPDATE_LOCATION',
+        lat: userLocation.latitude,
+        lng: userLocation.longitude,
+        accuracy: userLocation.accuracy,
+      });
     }
   }, [mapReady, userLocation, sendToMap]);
 
@@ -469,6 +575,44 @@ export default function NavigationScreen({ navigation, route }) {
                 <Text style={s.pillStatLabel}>walk</Text>
               </View>
             </LinearGradient>
+          </View>
+        )}
+
+        {userLocation && locationMeta?.valid && (
+          <View style={s.currentLocationCard}>
+            <View style={s.currentLocationTop}>
+              <View style={s.currentLocationIcon}>
+                <Navigation2 size={13} color={PURPLE_L} strokeWidth={2.3} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.currentLocationTitle}>Current location locked</Text>
+                <Text style={s.currentLocationCoords}>
+                  {userLocation.latitude.toFixed(5)}, {userLocation.longitude.toFixed(5)}
+                </Text>
+              </View>
+            </View>
+            <View style={s.currentLocationStats}>
+              <View style={s.currentLocationStat}>
+                <Text style={s.currentLocationLabel}>Accuracy</Text>
+                <Text style={s.currentLocationValue}>{locationMeta.accuracy ? formatDistance(locationMeta.accuracy) : 'Trusted'}</Text>
+              </View>
+              <View style={s.currentLocationStat}>
+                <Text style={s.currentLocationLabel}>Nearest landmark</Text>
+                <Text style={s.currentLocationValue} numberOfLines={1}>
+                  {locationMeta.nearest?.shortName || locationMeta.nearest?.name || 'Unknown'}
+                </Text>
+              </View>
+              <View style={s.currentLocationStat}>
+                <Text style={s.currentLocationLabel}>Distance</Text>
+                <Text style={s.currentLocationValue}>{formatDistance(locationMeta.nearest?.distance || 0)}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {!!locationWarning && (
+          <View style={s.locationWarningCard}>
+            <Text style={s.locationWarningText}>{locationWarning}</Text>
           </View>
         )}
 
@@ -674,6 +818,63 @@ const s = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
   },
   loadingText: { fontSize: 12, color: TEXT_SEC, fontWeight: '600' },
+
+  currentLocationCard: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 72,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(155,92,246,0.35)',
+    backgroundColor: 'rgba(15,10,30,0.94)',
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  currentLocationTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  currentLocationIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(113,40,206,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(155,92,246,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationTitle: { fontSize: 12.5, fontWeight: '800', color: TEXT_PRI },
+  currentLocationCoords: { fontSize: 10.5, color: TEXT_SEC, marginTop: 2 },
+  currentLocationStats: { flexDirection: 'row', gap: 8 },
+  currentLocationStat: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  currentLocationLabel: { fontSize: 8.5, color: TEXT_MUT, fontWeight: '800', textTransform: 'uppercase', marginBottom: 3 },
+  currentLocationValue: { fontSize: 10.5, color: TEXT_PRI, fontWeight: '800' },
+  locationWarningCard: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(196,141,56,0.35)',
+    backgroundColor: 'rgba(196,141,56,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  locationWarningText: { fontSize: 11, color: GOLD, fontWeight: '700', lineHeight: 16 },
 
   // Locate button
   locateBtn: {

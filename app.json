@@ -48,6 +48,14 @@
     "plugins": [
       "expo-font",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "CityFlow accesses your photos so you can attach photos to lost item and missing person reports.",
+          "cameraPermission": "CityFlow uses your camera so you can attach photos to lost item and missing person reports.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#08011A",
