@@ -77,7 +77,12 @@ export const GALLERY = [
 // ─── Daily rotation helper ─────────────────────────────────────────────────
 export function getPictureOfTheDay() {
   const now  = new Date();
-  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const seed = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
   const idx  = seed % GALLERY.length;
   return { picture: GALLERY[idx], index: idx };
+}
+
+export function getPictureSource(picture) {
+  if (picture?.imageUrl) return { uri: picture.imageUrl };
+  return picture?.file || GALLERY[0].file;
 }

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,8 +14,10 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Bell,
+  Camera,
   ChevronLeft,
   Edit3,
   Mail,
@@ -37,11 +40,13 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { C } from '../../shared/constants/theme';
-import { db } from '../../shared/config/firebase';
+import { db, storage } from '../../shared/config/firebase';
 
 const REPORT_FILTERS = ['all', 'pending', 'approved', 'claimed', 'resolved'];
 const REPORT_STATUSES = ['pending', 'approved', 'claimed', 'resolved'];
@@ -52,6 +57,16 @@ const EMPTY_NEWS_FORM = {
   category: 'Announcement',
   urgent: false,
   link: '',
+};
+const EMPTY_PICTURE_FORM = {
+  title: '',
+  caption: '',
+  story: '',
+  category: 'Featured',
+  categoryColor: '#C48D38',
+  date: 'Redemption City',
+  setAsToday: true,
+  photo: null,
 };
 
 function normalizeDate(value) {
@@ -119,7 +134,9 @@ export default function AdminDashboardScreen({ navigation }) {
   const [newsModalOpen, setNewsModalOpen] = useState(false);
   const [editingNews, setEditingNews] = useState(null);
   const [newsForm, setNewsForm] = useState(EMPTY_NEWS_FORM);
+  const [pictureForm, setPictureForm] = useState(EMPTY_PICTURE_FORM);
   const [savingNews, setSavingNews] = useState(false);
+  const [savingPicture, setSavingPicture] = useState(false);
   const [updatingReportId, setUpdatingReportId] = useState(null);
 
   const loadReports = useCallback(async () => {
@@ -232,6 +249,79 @@ export default function AdminDashboardScreen({ navigation }) {
     }
   }
 
+  async function pickPicture(source = 'library') {
+    try {
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', source === 'camera' ? 'Camera access is required.' : 'Photo library access is required.');
+        return;
+      }
+
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.72 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.72 });
+
+      if (!result.canceled && result.assets?.[0]) {
+        setPictureForm((current) => ({ ...current, photo: result.assets[0] }));
+      }
+    } catch (err) {
+      Alert.alert('Photo unavailable', err?.message || 'Please try again.');
+    }
+  }
+
+  async function uploadAdminPicture(photo) {
+    const response = await fetch(photo.uri);
+    const blob = await response.blob();
+    const extension = photo.fileName?.split('.').pop() || 'jpg';
+    const path = `picture-of-the-day/${Date.now()}.${extension}`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob, { contentType: photo.mimeType || 'image/jpeg' });
+    const imageUrl = await getDownloadURL(storageRef);
+    return { imageUrl, storagePath: path };
+  }
+
+  async function savePicture() {
+    if (!pictureForm.title.trim() || !pictureForm.photo?.uri) {
+      Alert.alert('Missing picture details', 'Please add a title and choose or take a photo.');
+      return;
+    }
+
+    setSavingPicture(true);
+    try {
+      const uploaded = await uploadAdminPicture(pictureForm.photo);
+      const payload = {
+        title: pictureForm.title.trim(),
+        caption: pictureForm.caption.trim(),
+        story: pictureForm.story.trim() || pictureForm.caption.trim(),
+        category: pictureForm.category.trim() || 'Featured',
+        categoryColor: pictureForm.categoryColor.trim() || '#C48D38',
+        date: pictureForm.date.trim() || 'Redemption City',
+        imageUrl: uploaded.imageUrl,
+        storagePath: uploaded.storagePath,
+        uploadedBy: 'CityFlow Admin',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      const refDoc = await addDoc(collection(db, 'pictureGallery'), payload);
+      const activePicture = { ...payload, id: refDoc.id };
+      if (pictureForm.setAsToday) {
+        await setDoc(doc(db, 'appConfig', 'pictureOfTheDay'), {
+          activePicture,
+          overrideEnabled: true,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+      setPictureForm(EMPTY_PICTURE_FORM);
+      Alert.alert('Picture saved', pictureForm.setAsToday ? 'This is now the Picture of the Day.' : 'The picture was added to Firebase.');
+    } catch (err) {
+      Alert.alert('Upload failed', err?.message || 'Please try again.');
+    } finally {
+      setSavingPicture(false);
+    }
+  }
+
   function confirmDeleteNews(item) {
     Alert.alert(
       'Delete news item?',
@@ -273,6 +363,7 @@ export default function AdminDashboardScreen({ navigation }) {
         {[
           ['lost', 'Lost & Found'],
           ['news', 'News & Updates'],
+          ['pictures', 'Pictures'],
         ].map(([id, label]) => (
           <TouchableOpacity key={id} onPress={() => setActiveTab(id)} style={[s.tab, activeTab === id && s.tabActive]} activeOpacity={0.85}>
             <Text style={[s.tabText, activeTab === id && s.tabTextActive]}>{label}</Text>
@@ -320,7 +411,7 @@ export default function AdminDashboardScreen({ navigation }) {
             ))
           )}
         </ScrollView>
-      ) : (
+      ) : activeTab === 'news' ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scroll}
@@ -364,6 +455,73 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             ))
           )}
+        </ScrollView>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.scroll}
+        >
+          <View style={s.pictureAdminCard}>
+            <View style={s.cardTop}>
+              <View style={s.cardIcon}>
+                <Camera size={15} color={C.gold} strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>Picture of the Day</Text>
+                <Text style={s.cardSub}>Upload a new picture and optionally override the daily cycle</Text>
+              </View>
+            </View>
+
+            {pictureForm.photo?.uri ? (
+              <Image source={{ uri: pictureForm.photo.uri }} style={s.picturePreview} />
+            ) : (
+              <View style={s.pictureDrop}>
+                <Camera size={24} color={C.ts} strokeWidth={1.8} />
+                <Text style={s.pictureDropText}>No picture selected</Text>
+              </View>
+            )}
+
+            <View style={s.pictureActions}>
+              <TouchableOpacity onPress={() => pickPicture('camera')} style={s.actionBtn} activeOpacity={0.82}>
+                <Camera size={13} color={C.purpleL} strokeWidth={2} />
+                <Text style={s.actionText}>Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => pickPicture('library')} style={s.actionBtn} activeOpacity={0.82}>
+                <Plus size={13} color={C.purpleL} strokeWidth={2} />
+                <Text style={s.actionText}>Choose Photo</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={s.label}>Title</Text>
+            <TextInput value={pictureForm.title} onChangeText={(value) => setPictureForm((current) => ({ ...current, title: value }))} placeholder="Picture title" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Caption</Text>
+            <TextInput value={pictureForm.caption} onChangeText={(value) => setPictureForm((current) => ({ ...current, caption: value }))} placeholder="Short caption" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Story</Text>
+            <TextInput value={pictureForm.story} onChangeText={(value) => setPictureForm((current) => ({ ...current, story: value }))} placeholder="Optional longer story..." placeholderTextColor={C.tm} multiline style={[s.input, s.textArea]} />
+            <Text style={s.label}>Category</Text>
+            <TextInput value={pictureForm.category} onChangeText={(value) => setPictureForm((current) => ({ ...current, category: value }))} placeholder="Featured, Prayer, Convention..." placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Date / Location label</Text>
+            <TextInput value={pictureForm.date} onChangeText={(value) => setPictureForm((current) => ({ ...current, date: value }))} placeholder="Redemption City" placeholderTextColor={C.tm} style={s.input} />
+
+            <View style={s.switchRow}>
+              <View>
+                <Text style={s.switchTitle}>Set as Picture of the Day</Text>
+                <Text style={s.switchSub}>Overrides the coded daily cycle immediately</Text>
+              </View>
+              <Switch
+                value={pictureForm.setAsToday}
+                onValueChange={(value) => setPictureForm((current) => ({ ...current, setAsToday: value }))}
+                trackColor={{ false: 'rgba(255,255,255,0.12)', true: C.purple }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <TouchableOpacity onPress={savePicture} disabled={savingPicture} activeOpacity={0.86}>
+              <LinearGradient colors={[C.purple, '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.saveBtn, savingPicture && s.disabledBtn]}>
+                {savingPicture ? <ActivityIndicator color="#fff" /> : <Text style={s.saveText}>Upload Picture</Text>}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
 
@@ -573,6 +731,11 @@ const s = StyleSheet.create({
   addNewsText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   newsLink: { fontSize: 11, color: C.gold, marginBottom: 11 },
   newsActions: { flexDirection: 'row', gap: 9 },
+  pictureAdminCard: { backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 18, padding: 15 },
+  picturePreview: { width: '100%', height: 210, borderRadius: 16, backgroundColor: C.surfHi, marginBottom: 12 },
+  pictureDrop: { height: 180, borderRadius: 16, borderWidth: 1, borderColor: C.b, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  pictureDropText: { fontSize: 12, color: C.ts, fontWeight: '700' },
+  pictureActions: { flexDirection: 'row', gap: 9, marginBottom: 12 },
   actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 13, backgroundColor: 'rgba(148,88,224,0.1)', borderWidth: 1, borderColor: 'rgba(148,88,224,0.25)', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 7 },
   deleteAction: { backgroundColor: 'rgba(212,79,79,0.08)', borderColor: 'rgba(212,79,79,0.22)' },
   actionText: { fontSize: 12, fontWeight: '700', color: C.purpleL },

@@ -10,10 +10,11 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getPictureOfTheDay } from './data/gallery';
+import { getPictureSource } from './data/gallery';
+import usePictureOfTheDay from './usePictureOfTheDay';
 
 export default function PictureOfTheDay({ navigation }) {
-  const { picture, index } = getPictureOfTheDay();
+  const { picture, index } = usePictureOfTheDay();
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(16)).current;
@@ -29,10 +30,10 @@ export default function PictureOfTheDay({ navigation }) {
     <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
       <TouchableOpacity
         activeOpacity={0.88}
-        onPress={() => navigation.navigate('PictureGallery', { highlightIndex: index })}
+        onPress={() => navigation.navigate('PictureGallery', { highlightIndex: index, overridePicture: picture })}
         style={s.card}
       >
-        <Image source={picture.file} style={s.image} resizeMode="cover" />
+        <Image source={getPictureSource(picture)} style={s.image} resizeMode="cover" />
 
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.78)']}

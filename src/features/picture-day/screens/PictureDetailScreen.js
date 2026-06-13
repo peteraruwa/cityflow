@@ -14,14 +14,14 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HeaderBackButton } from '@react-navigation/elements';
-import { GALLERY } from '../data/gallery';
+import { GALLERY, getPictureSource } from '../data/gallery';
 
 const { height } = Dimensions.get('window');
 const HERO_H = height * 0.50;
 
 export default function PictureDetailScreen({ navigation, route }) {
-  const { pictureId } = route.params ?? {};
-  const picture = GALLERY.find(g => g.id === pictureId) ?? GALLERY[0];
+  const { pictureId, picture: routePicture } = route.params ?? {};
+  const picture = routePicture || GALLERY.find(g => g.id === pictureId) || GALLERY[0];
 
   const imageFade    = useRef(new Animated.Value(0)).current;
   const contentFade  = useRef(new Animated.Value(0)).current;
@@ -37,7 +37,7 @@ export default function PictureDetailScreen({ navigation, route }) {
     ]).start();
   }, [pictureId]);
 
-  const paragraphs = picture.story.split('\n\n').filter(Boolean);
+  const paragraphs = String(picture.story || picture.caption || '').split('\n\n').filter(Boolean);
 
   return (
     <View style={s.root}>
@@ -48,7 +48,7 @@ export default function PictureDetailScreen({ navigation, route }) {
         {/* Hero image */}
         <View style={s.heroWrap}>
           <Animated.Image
-            source={picture.file}
+            source={getPictureSource(picture)}
             style={[s.heroImage, { opacity: imageFade }]}
             resizeMode="cover"
           />

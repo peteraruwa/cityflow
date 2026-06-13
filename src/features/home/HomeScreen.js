@@ -57,7 +57,8 @@ import { usePrefs } from "../../shared/context/PrefsContext";
 import { useUserProfile } from "../../shared/context/UserContext";
 import { translateText } from "../../shared/i18n/runtimeTranslator";
 import { allQuotes } from "../../shared/data/quotes";
-import { GALLERY } from "../picture-day/data/gallery";
+import { getPictureSource } from "../picture-day/data/gallery";
+import usePictureOfTheDay from "../picture-day/usePictureOfTheDay";
 import { db } from "../../shared/config/firebase";
 import NewsFeed from './components/NewsFeed';
 // Import the real WeatherWidget component
@@ -208,7 +209,7 @@ export default function HomeScreen() {
 
         <AiCard tr={tr} onPress={() => goRoute("AIAssistant")} />
 
-        <PictureCard tr={tr} onPress={() => goRoute("PictureGallery")} />
+        <PictureCard tr={tr} onPress={(picture) => goRoute("PictureGallery", { overridePicture: picture })} />
 
         <FactCard tr={tr} onPress={() => goRoute("FunFacts")} />
 
@@ -577,12 +578,12 @@ function AiCard({ tr, onPress }) {
 }
 
 function PictureCard({ tr, onPress }) {
-  const pic = GALLERY[0];
+  const { picture: pic } = usePictureOfTheDay();
   return (
     <View style={s.section}>
-      <SectionHeader tr={tr} title="Picture of the Day" action="View Gallery" onAction={onPress} />
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={s.pictureCard}>
-        <ImageBackground source={pic.file} resizeMode="cover" style={s.pictureImage}>
+      <SectionHeader tr={tr} title="Picture of the Day" action="View Gallery" onAction={() => onPress(pic)} />
+      <TouchableOpacity onPress={() => onPress(pic)} activeOpacity={0.85} style={s.pictureCard}>
+        <ImageBackground source={getPictureSource(pic)} resizeMode="cover" style={s.pictureImage}>
           <LinearGradient colors={["rgba(8,1,26,0)", "rgba(8,1,26,0.85)"]} locations={[0.35, 1]} style={s.pictureOverlay} />
           <View style={s.pictureCamera}>
             <Camera size={16} color="#fff" strokeWidth={1.8} />

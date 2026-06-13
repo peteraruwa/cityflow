@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HeaderBackButton } from '@react-navigation/elements';
-import { GALLERY, getPictureOfTheDay } from '../data/gallery';
+import { GALLERY, getPictureOfTheDay, getPictureSource } from '../data/gallery';
 
 const { width } = Dimensions.get('window');
 const SIDE_PAD = 14;
@@ -24,10 +24,12 @@ const COL_GAP  = 10;
 const CATEGORIES = ['All', ...new Set(GALLERY.map(g => g.category))];
 
 export default function PictureGalleryScreen({ navigation, route }) {
-  const { highlightIndex } = route.params ?? {};
+  const { highlightIndex, overridePicture } = route.params ?? {};
 
   const { picture: todayPic, index: todayIdx } =
-    highlightIndex !== undefined
+    overridePicture
+      ? { picture: overridePicture, index: -1 }
+      : highlightIndex !== undefined
       ? { picture: GALLERY[highlightIndex], index: highlightIndex }
       : getPictureOfTheDay();
 
@@ -49,7 +51,7 @@ export default function PictureGalleryScreen({ navigation, route }) {
   });
 
   const goToDetail = useCallback((item) => {
-    navigation.navigate('PictureDetail', { pictureId: item.id });
+    navigation.navigate('PictureDetail', item.imageUrl ? { picture: item } : { pictureId: item.id });
   }, [navigation]);
 
   const renderItem = ({ item, index: i }) => (
@@ -62,7 +64,7 @@ export default function PictureGalleryScreen({ navigation, route }) {
         i % 2 === 0 ? { marginRight: COL_GAP / 2 } : { marginLeft: COL_GAP / 2 },
       ]}
     >
-      <Image source={item.file} style={s.gridImage} resizeMode="cover" />
+      <Image source={getPictureSource(item)} style={s.gridImage} resizeMode="cover" />
       <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={s.gridGradient} />
       <View style={[s.gridDot, { backgroundColor: item.categoryColor }]} />
       <Text style={s.gridTitle} numberOfLines={2}>{item.title}</Text>
@@ -73,7 +75,7 @@ export default function PictureGalleryScreen({ navigation, route }) {
     <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
       {/* Hero */}
       <TouchableOpacity activeOpacity={0.88} onPress={() => goToDetail(todayPic)} style={s.hero}>
-        <Image source={todayPic.file} style={s.heroImage} resizeMode="cover" />
+        <Image source={getPictureSource(todayPic)} style={s.heroImage} resizeMode="cover" />
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.78)']} style={s.heroGradient} />
 
         <View style={s.todayBadge}>
