@@ -6,7 +6,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, CalendarDays } from 'lucide-react-native';
 import { createUserWithEmailAndPassword, fetchSignInMethodsForEmail, updateProfile } from 'firebase/auth';
 import { collection, doc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../shared/config/firebase';
@@ -15,6 +15,7 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
   const [firstName, setFirstName]         = useState('');
   const [lastName, setLastName]           = useState('');
   const [email, setEmail]                 = useState('');
+  const [dob, setDob]                     = useState('');
   const [pass, setPass]                   = useState('');
   const [confirmPass, setConfirmPass]     = useState('');
   const [showPw, setShowPw]               = useState(false);
@@ -28,10 +29,15 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
     const cleanFirstName = firstName.trim() || 'CityFlow';
     const cleanLastName = lastName.trim() || 'Guest';
     const cleanEmail = email.trim().toLowerCase();
+    const cleanDob = dob.trim();
     const displayName = `${cleanFirstName} ${cleanLastName}`;
 
     if (!cleanEmail) {
       setMessage('Please enter an email address to create your account.');
+      return;
+    }
+    if (!isValidDob(cleanDob)) {
+      setMessage('Please enter your date of birth in YYYY-MM-DD format.');
       return;
     }
     if (!pass || pass.length < 6) {
@@ -63,6 +69,8 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
         lastName: cleanLastName,
         displayName,
         email: cleanEmail,
+        dob: cleanDob,
+        dateOfBirth: cleanDob,
         createdAt: new Date().toISOString(),
       });
       onSignUp({
@@ -71,6 +79,8 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
         lastName: cleanLastName,
         displayName,
         email: cleanEmail,
+        dob: cleanDob,
+        dateOfBirth: cleanDob,
       });
     } catch (error) {
       console.warn('Firebase sign-up failed:', error?.code || error?.message);
@@ -162,6 +172,23 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+          />
+        </View>
+
+        {/* Date of birth */}
+        <FieldLabel label="Date of Birth" />
+        <View style={[s.fieldRow, focused === 'dob' && s.fieldFocused]}>
+          <CalendarDays size={15} color={focused === 'dob' ? C.gold : C.iconMuted} strokeWidth={2} />
+          <TextInput
+            style={s.textInput}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={C.placeholder}
+            value={dob}
+            onChangeText={setDob}
+            onFocus={() => setFocused('dob')}
+            onBlur={() => setFocused(null)}
+            keyboardType="numbers-and-punctuation"
+            autoComplete="birthdate-full"
           />
         </View>
 
@@ -259,6 +286,20 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
 
 function FieldLabel({ label }) {
   return <Text style={s.fieldLabel}>{label}</Text>;
+}
+
+function isValidDob(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const today = new Date();
+  return (
+    date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    && date.getTime() <= Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  );
 }
 
 function getSignUpErrorMessage(error) {

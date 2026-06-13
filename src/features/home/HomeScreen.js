@@ -34,6 +34,7 @@ import {
   Droplets,
   Eye,
   FileText,
+  Gift,
   Leaf,
   MapPin,
   Navigation,
@@ -108,6 +109,21 @@ const ACTIONS = [
   { Icon: CalendarDays, label: "Events", sub: "What's on today", color: "#4A8A5A", route: "Events" },
 ];
 
+function birthdayParts(value) {
+  if (!value) return null;
+  const text = typeof value === 'string' ? value : value?.toDate?.()?.toISOString?.() || '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (!match) return null;
+  return { month: Number(match[2]), day: Number(match[3]) };
+}
+
+function isBirthdayToday(user) {
+  const parts = birthdayParts(user?.dob || user?.dateOfBirth || user?.birthDate || user?.birthday);
+  if (!parts) return false;
+  const today = new Date();
+  return parts.month === today.getMonth() + 1 && parts.day === today.getDate();
+}
+
 
 
 export default function HomeScreen() {
@@ -119,6 +135,7 @@ export default function HomeScreen() {
   const [showDevotional, setShowDevotional] = useState(false);
   const tr = (value) => translateText(value, language);
   const firstName = user?.firstName || "Guest";
+  const showBirthdayBanner = isBirthdayToday(user);
 
   const getGreeting = () => {
     const h = new Date().getHours();
@@ -166,6 +183,8 @@ export default function HomeScreen() {
           {/* Updated to use the real WeatherWidget component */}
           <WeatherWidget />
         </View>
+
+        {showBirthdayBanner && <BirthdayBanner tr={tr} firstName={firstName} />}
 
         <QuoteOfTheDay tr={tr} />
 
@@ -420,6 +439,23 @@ function SosBanner({ tr, onPress }) {
           <ChevronRight size={14} color="#F06565" strokeWidth={2} />
         </View>
       </TouchableOpacity>
+    </View>
+  );
+}
+
+function BirthdayBanner({ tr, firstName }) {
+  return (
+    <View style={s.birthdayWrap}>
+      <LinearGradient colors={["rgba(196,141,56,0.18)", "rgba(113,40,206,0.18)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.birthdayCard}>
+        <View style={s.birthdayIcon}>
+          <Gift size={20} color={C.gold} strokeWidth={1.8} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.birthdayTitle}>{tr(`Happy Birthday, ${firstName}!`)}</Text>
+          <Text style={s.birthdayText}>{tr("CityFlow celebrates you today. May this new year bring grace, joy, and beautiful memories in Redemption City.")}</Text>
+        </View>
+        <Sparkles size={18} color={C.gold} strokeWidth={1.8} />
+      </LinearGradient>
     </View>
   );
 }
@@ -784,6 +820,11 @@ const s = StyleSheet.create({
   greetingName: { fontSize: 14, fontWeight: "500", color: C.ts },
   greetingUser: { fontSize: 24, fontWeight: "800", color: C.tp, lineHeight: 29 },
   greetingSub: { fontSize: 11.5, color: C.tm, marginTop: 4 },
+  birthdayWrap: { paddingHorizontal: 18, marginBottom: 22 },
+  birthdayCard: { minHeight: 92, borderRadius: 22, borderWidth: 1, borderColor: "rgba(196,141,56,0.28)", padding: 15, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden" },
+  birthdayIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(196,141,56,0.16)", borderWidth: 1, borderColor: "rgba(196,141,56,0.32)", alignItems: "center", justifyContent: "center" },
+  birthdayTitle: { fontSize: 15, fontWeight: "800", color: C.tp, marginBottom: 4 },
+  birthdayText: { fontSize: 11.5, color: C.ts, lineHeight: 17 },
 
   // Removed weatherChip, weatherTemp, weatherCondition styles since they're now handled by the imported widget
 
