@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform,
+  Modal, Platform, Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, CalendarDays } from 'lucide-react-native';
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import { createUserWithEmailAndPassword, fetchSignInMethodsForEmail, updateProfile } from 'firebase/auth';
 import { collection, doc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../shared/config/firebase';
@@ -20,6 +20,8 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
   const [confirmPass, setConfirmPass]     = useState('');
   const [showPw, setShowPw]               = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [dobPickerOpen, setDobPickerOpen] = useState(false);
+  const [dobPickerMonth, setDobPickerMonth] = useState(() => new Date(1994, new Date().getMonth(), 1));
   const [focused, setFocused]             = useState(null);
   const [loading, setLoading]             = useState(false);
   const [message, setMessage]             = useState('');
@@ -178,7 +180,9 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
         {/* Date of birth */}
         <FieldLabel label="Date of Birth" />
         <View style={[s.fieldRow, focused === 'dob' && s.fieldFocused]}>
-          <CalendarDays size={15} color={focused === 'dob' ? C.gold : C.iconMuted} strokeWidth={2} />
+          <TouchableOpacity onPress={() => openDobPicker(dob, setDobPickerMonth, setDobPickerOpen)} hitSlop={8}>
+            <CalendarDays size={15} color={focused === 'dob' ? C.gold : C.iconMuted} strokeWidth={2} />
+          </TouchableOpacity>
           <TextInput
             style={s.textInput}
             placeholder="YYYY-MM-DD"
@@ -190,6 +194,9 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
             keyboardType="numbers-and-punctuation"
             autoComplete="birthdate-full"
           />
+          <TouchableOpacity onPress={() => openDobPicker(dob, setDobPickerMonth, setDobPickerOpen)} hitSlop={8}>
+            <Text style={s.datePickText}>Pick</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Password */}
@@ -280,6 +287,17 @@ export default function SignUpScreen({ onSignUp, onBackToLogin }) {
         </View>
 
       </ScrollView>
+
+      <DobPickerModal
+        visible={dobPickerOpen}
+        month={dobPickerMonth}
+        onChangeMonth={setDobPickerMonth}
+        onClose={() => setDobPickerOpen(false)}
+        onSelect={(value) => {
+          setDob(value);
+          setDobPickerOpen(false);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -299,6 +317,115 @@ function isValidDob(value) {
     && date.getUTCMonth() === month - 1
     && date.getUTCDate() === day
     && date.getTime() <= Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  );
+}
+
+function openDobPicker(value, setMonth, setOpen) {
+  const parsed = parseDob(value);
+  const fallback = new Date(1994, new Date().getMonth(), 1);
+  setMonth(parsed ? new Date(parsed.getFullYear(), parsed.getMonth(), 1) : fallback);
+  setOpen(true);
+}
+
+function parseDob(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+  if (!match) return null;
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function formatYmd(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function monthTitle(date) {
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function getCalendarDays(month) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function DobPickerModal({ visible, month, onChangeMonth, onClose, onSelect }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = getCalendarDays(month);
+
+  function moveMonth(delta) {
+    onChangeMonth(new Date(month.getFullYear(), month.getMonth() + delta, 1));
+  }
+
+  function moveYear(delta) {
+    onChangeMonth(new Date(month.getFullYear() + delta, month.getMonth(), 1));
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={s.modalBackdrop} onPress={onClose}>
+        <Pressable style={s.calendarSheet}>
+          <View style={s.calendarTop}>
+            <View>
+              <Text style={s.calendarTitle}>Select date of birth</Text>
+              <Text style={s.calendarSub}>Choose a past date</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={s.calendarClose} hitSlop={8}>
+              <X size={16} color={C.text} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={s.calendarNav}>
+            <TouchableOpacity onPress={() => moveYear(-1)} style={s.calendarNavBtn}>
+              <Text style={s.calendarNavText}>-Y</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => moveMonth(-1)} style={s.calendarNavBtn}>
+              <ChevronLeft size={15} color={C.gold} strokeWidth={2} />
+            </TouchableOpacity>
+            <Text style={s.calendarMonth}>{monthTitle(month)}</Text>
+            <TouchableOpacity onPress={() => moveMonth(1)} style={s.calendarNavBtn}>
+              <ChevronRight size={15} color={C.gold} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => moveYear(1)} style={s.calendarNavBtn}>
+              <Text style={s.calendarNavText}>+Y</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={s.weekRow}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <Text key={`${day}-${index}`} style={s.weekText}>{day}</Text>
+            ))}
+          </View>
+          <View style={s.dayGrid}>
+            {days.map((date) => {
+              const inMonth = date.getMonth() === month.getMonth();
+              const disabled = date.getTime() > today.getTime();
+              return (
+                <TouchableOpacity
+                  key={formatYmd(date)}
+                  disabled={disabled}
+                  onPress={() => onSelect(formatYmd(date))}
+                  style={[s.dayCell, !inMonth && s.dayCellMuted, disabled && s.dayCellDisabled]}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[s.dayText, !inMonth && s.dayTextMuted, disabled && s.dayTextDisabled]}>{date.getDate()}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -395,6 +522,7 @@ const s = StyleSheet.create({
     color: C.text,
     fontSize: 14,
   },
+  datePickText: { color: C.gold, fontSize: 12, fontWeight: '800' },
 
   /* Error hint */
   errorHint: {
@@ -429,4 +557,23 @@ const s = StyleSheet.create({
   switchRow:  { flexDirection: 'row', justifyContent: 'center', marginTop: 28 },
   switchText: { fontSize: 13, color: C.textMuted },
   switchLink: { fontSize: 13, color: C.gold, fontWeight: '700' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(2,0,8,0.7)', justifyContent: 'flex-end' },
+  calendarSheet: { backgroundColor: '#100720', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.1)', padding: 18, paddingBottom: 28 },
+  calendarTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  calendarTitle: { color: C.text, fontSize: 17, fontWeight: '800' },
+  calendarSub: { color: C.textMuted, fontSize: 11.5, marginTop: 3 },
+  calendarClose: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.fieldBg, borderWidth: 1, borderColor: C.fieldBorder, alignItems: 'center', justifyContent: 'center' },
+  calendarNav: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 13 },
+  calendarNavBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: 'rgba(196,141,56,0.1)', borderWidth: 1, borderColor: 'rgba(196,141,56,0.24)', alignItems: 'center', justifyContent: 'center' },
+  calendarNavText: { color: C.gold, fontSize: 10.5, fontWeight: '900' },
+  calendarMonth: { flex: 1, textAlign: 'center', color: C.text, fontSize: 14, fontWeight: '800' },
+  weekRow: { flexDirection: 'row', marginBottom: 7 },
+  weekText: { flex: 1, textAlign: 'center', color: C.textMuted, fontSize: 10, fontWeight: '800' },
+  dayGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { width: `${100 / 7}%`, aspectRatio: 1.12, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
+  dayCellMuted: { opacity: 0.42 },
+  dayCellDisabled: { opacity: 0.2 },
+  dayText: { color: C.text, fontSize: 13, fontWeight: '700' },
+  dayTextMuted: { color: C.textMuted },
+  dayTextDisabled: { color: C.textMuted },
 });
