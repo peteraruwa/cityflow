@@ -444,17 +444,26 @@ function SosBanner({ tr, onPress }) {
 }
 
 function BirthdayBanner({ tr, firstName }) {
+  const confetti = ["#FF5FA2", "#32D4FF", "#FFD166", "#7C4DFF", "#3DDB86", "#FF8A3D"];
   return (
     <View style={s.birthdayWrap}>
-      <LinearGradient colors={["rgba(196,141,56,0.18)", "rgba(113,40,206,0.18)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.birthdayCard}>
+      <LinearGradient colors={["#FF5FA2", "#7C4DFF", "#32D4FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.birthdayCard}>
+        <View style={s.birthdayGlow} />
+        <View style={s.confettiRow}>
+          {confetti.map((color, index) => (
+            <View key={`${color}-${index}`} style={[s.confettiDot, { backgroundColor: color }]} />
+          ))}
+        </View>
         <View style={s.birthdayIcon}>
-          <Gift size={20} color={C.gold} strokeWidth={1.8} />
+          <Gift size={21} color="#2B124C" strokeWidth={2} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.birthdayTitle}>{tr(`Happy Birthday, ${firstName}!`)}</Text>
           <Text style={s.birthdayText}>{tr("CityFlow celebrates you today. May this new year bring grace, joy, and beautiful memories in Redemption City.")}</Text>
         </View>
-        <Sparkles size={18} color={C.gold} strokeWidth={1.8} />
+        <View style={s.sparkleBadge}>
+          <Sparkles size={18} color="#FFD166" strokeWidth={2.1} />
+        </View>
       </LinearGradient>
     </View>
   );
@@ -821,10 +830,14 @@ const s = StyleSheet.create({
   greetingUser: { fontSize: 24, fontWeight: "800", color: C.tp, lineHeight: 29 },
   greetingSub: { fontSize: 11.5, color: C.tm, marginTop: 4 },
   birthdayWrap: { paddingHorizontal: 18, marginBottom: 22 },
-  birthdayCard: { minHeight: 92, borderRadius: 22, borderWidth: 1, borderColor: "rgba(196,141,56,0.28)", padding: 15, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden" },
-  birthdayIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(196,141,56,0.16)", borderWidth: 1, borderColor: "rgba(196,141,56,0.32)", alignItems: "center", justifyContent: "center" },
-  birthdayTitle: { fontSize: 15, fontWeight: "800", color: C.tp, marginBottom: 4 },
-  birthdayText: { fontSize: 11.5, color: C.ts, lineHeight: 17 },
+  birthdayCard: { minHeight: 104, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.32)", padding: 15, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden" },
+  birthdayGlow: { position: "absolute", top: -46, right: -28, width: 132, height: 132, borderRadius: 66, backgroundColor: "rgba(255,209,102,0.38)" },
+  confettiRow: { position: "absolute", left: 14, right: 14, top: 10, flexDirection: "row", justifyContent: "space-between", opacity: 0.95 },
+  confettiDot: { width: 7, height: 7, borderRadius: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.45)" },
+  birthdayIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: "#FFD166", borderWidth: 2, borderColor: "rgba(255,255,255,0.72)", alignItems: "center", justifyContent: "center" },
+  birthdayTitle: { fontSize: 16, fontWeight: "900", color: "#fff", marginBottom: 4 },
+  birthdayText: { fontSize: 11.7, color: "rgba(255,255,255,0.9)", lineHeight: 18, fontWeight: "600" },
+  sparkleBadge: { width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(43,18,76,0.34)", borderWidth: 1, borderColor: "rgba(255,255,255,0.24)", alignItems: "center", justifyContent: "center" },
 
   // Removed weatherChip, weatherTemp, weatherCondition styles since they're now handled by the imported widget
 
