@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, orderBy, query as firestoreQuery, serverTimestamp } from 'firebase/firestore';
 import {
   BedDouble,
   CalendarDays,
@@ -38,6 +38,7 @@ const ROOM_TYPES = [
 
 const BASE_CAPACITY = { standard: 4, family: 2, executive: 1 };
 const ACTIVE_BOOKING_STATUSES = ['pending_confirmation', 'pending_payment', 'confirmed', 'checked_in'];
+const DEVELOPER_EMAIL = 'serialquest@gmail.com';
 
 function fallbackPhone(index) {
   return ['08067592352', '08058047900', '09161934554', '09022024174'][index % 4];
@@ -99,14 +100,56 @@ function getAvailability(accommodation, bookings, checkIn, checkOut) {
   }));
 }
 
+function bookingEmailBody(payload) {
+  return [
+    'New CityFlow accommodation booking',
+    '',
+    `Reference: ${payload.bookingCode}`,
+    `Accommodation: ${payload.accommodationName}`,
+    `Room: ${payload.roomType}`,
+    `Dates: ${payload.checkIn} - ${payload.checkOut}`,
+    `Nights: ${payload.nights}`,
+    `Guests: ${payload.guests}`,
+    `Amount: ${money(payload.amount)}`,
+    '',
+    `Guest: ${payload.userName}`,
+    `Email: ${payload.email || 'Not provided'}`,
+    `Phone: ${payload.phone || 'Not provided'}`,
+    `Accommodation contact: ${payload.accommodationPhone || 'Not provided'}`,
+    '',
+    `Special requests: ${payload.notes || 'None'}`,
+  ].join('\n');
+}
+
+async function queueDeveloperEmail(bookingId, payload) {
+  const subject = `CityFlow stay booking ${payload.bookingCode}`;
+  const text = bookingEmailBody(payload);
+  await addDoc(collection(db, 'mail'), {
+    to: [DEVELOPER_EMAIL],
+    message: {
+      subject,
+      text,
+      html: text.replace(/\n/g, '<br />'),
+    },
+    bookingId,
+    source: 'accommodationBooking',
+    status: 'queued',
+    createdAt: serverTimestamp(),
+  });
+}
+
 export default function StayScreen({ navigation }) {
   const { user } = useUserProfile();
-  const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [bookingAccommodationId, setBookingAccommodationId] = useState(null);
   const [roomType, setRoomType] = useState('standard');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState('1');
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [notes, setNotes] = useState('');
   const [booking, setBooking] = useState(false);
   const [confirmed, setConfirmed] = useState(null);
   const [bookings, setBookings] = useState([]);
@@ -120,19 +163,27 @@ export default function StayScreen({ navigation }) {
   );
 
   const filtered = accommodations.filter((item) => {
-    const q = query.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     return !q || [item.name, item.description, item.subcategory, item.address]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(q));
   });
 
-  const selected = accommodations.find((item) => item.id === selectedId) || accommodations[0];
+  const selected = accommodations.find((item) => item.id === bookingAccommodationId);
   const selectedRoom = ROOM_TYPES.find((item) => item.id === roomType) || ROOM_TYPES[0];
   const nights = stayNights(checkIn, checkOut);
   const serviceFee = 1500;
   const total = selectedRoom.price * nights + serviceFee;
-  const availability = getAvailability(selected, bookings, checkIn, checkOut);
+  const availability = selected ? getAvailability(selected, bookings, checkIn, checkOut) : {};
   const selectedAvailable = availability[roomType] ?? 0;
+
+  useEffect(() => {
+    const firebaseUser = auth?.currentUser;
+    const profileName = user?.displayName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+    setGuestName((current) => current || profileName || firebaseUser?.displayName || '');
+    setGuestEmail((current) => current || user?.email || firebaseUser?.email || '');
+    setGuestPhone((current) => current || user?.phone || user?.phoneNumber || firebaseUser?.phoneNumber || '');
+  }, [user]);
 
   useEffect(() => {
     loadBookings();
@@ -141,7 +192,7 @@ export default function StayScreen({ navigation }) {
   async function loadBookings() {
     setLoadingAvailability(true);
     try {
-      const snap = await getDocs(query(collection(db, 'accommodationBookings'), orderBy('createdAt', 'desc')));
+      const snap = await getDocs(firestoreQuery(collection(db, 'accommodationBookings'), orderBy('createdAt', 'desc')));
       setBookings(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
     } catch (err) {
       console.warn('Could not load accommodation availability:', err?.code || err?.message);
@@ -160,8 +211,8 @@ export default function StayScreen({ navigation }) {
   }
 
   async function handleBooking() {
-    if (!selected || !checkIn.trim() || !checkOut.trim()) {
-      Alert.alert('Booking details needed', 'Please choose accommodation, check-in, and check-out dates.');
+    if (!selected || !checkIn.trim() || !checkOut.trim() || !guestName.trim() || !guestPhone.trim()) {
+      Alert.alert('Booking details needed', 'Please choose accommodation, dates, name, and phone number.');
       return;
     }
     if (selectedAvailable <= 0) {
@@ -171,8 +222,8 @@ export default function StayScreen({ navigation }) {
 
     setBooking(true);
     const firebaseUser = auth?.currentUser;
-    const email = user?.email || firebaseUser?.email || '';
-    const name = user?.displayName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || email || 'Guest';
+    const email = guestEmail.trim() || user?.email || firebaseUser?.email || '';
+    const name = guestName.trim() || user?.displayName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || email || 'Guest';
 
     try {
       const payload = {
@@ -190,10 +241,28 @@ export default function StayScreen({ navigation }) {
         userId: firebaseUser?.uid || user?.uid || email || 'anonymous',
         userName: name,
         email,
+        phone: guestPhone.trim(),
+        notes: notes.trim(),
         bookingCode: `STAY-${Date.now().toString(36).toUpperCase()}`,
         createdAt: serverTimestamp(),
+        developerEmail: DEVELOPER_EMAIL,
+        developerEmailStatus: 'queued',
       };
       const ref = await addDoc(collection(db, 'accommodationBookings'), payload);
+      try {
+        await queueDeveloperEmail(ref.id, payload);
+      } catch (mailErr) {
+        await addDoc(collection(db, 'developerEmailQueue'), {
+          to: DEVELOPER_EMAIL,
+          subject: `CityFlow stay booking ${payload.bookingCode}`,
+          body: bookingEmailBody(payload),
+          bookingId: ref.id,
+          source: 'accommodationBooking',
+          status: 'queued',
+          error: mailErr?.message || '',
+          createdAt: serverTimestamp(),
+        });
+      }
       setConfirmed({ ...payload, id: ref.id });
       setBookings((items) => [{ ...payload, id: ref.id }, ...items]);
     } catch (err) {
@@ -213,19 +282,21 @@ export default function StayScreen({ navigation }) {
           </View>
           <Text style={s.confirmedTitle}>Booking Created</Text>
           <Text style={s.confirmedSub}>
-            Your stay request for {confirmed.accommodationName} has been recorded. Complete payment at the accommodation desk or contact the guest house.
+            Your stay request for {confirmed.accommodationName} has been recorded and sent to the CityFlow developer queue.
           </Text>
           <View style={s.summaryBox}>
             <SummaryRow label="Room" value={confirmed.roomType} />
             <SummaryRow label="Dates" value={`${confirmed.checkIn} - ${confirmed.checkOut}`} />
             <SummaryRow label="Amount" value={money(confirmed.amount)} />
+            <SummaryRow label="Guest" value={confirmed.userName} />
+            <SummaryRow label="Phone" value={confirmed.phone} />
             <SummaryRow label="Reference" value={confirmed.id} />
           </View>
           <TouchableOpacity style={s.callBtn} onPress={() => callAccommodation(confirmed.accommodationPhone)} activeOpacity={0.84}>
             <Phone size={14} color="#fff" strokeWidth={2} />
             <Text style={s.callBtnText}>Call Guest House</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.anotherBtn} onPress={() => setConfirmed(null)} activeOpacity={0.84}>
+          <TouchableOpacity style={s.anotherBtn} onPress={() => { setConfirmed(null); setBookingAccommodationId(null); }} activeOpacity={0.84}>
             <Text style={s.anotherText}>Book Another Stay</Text>
           </TouchableOpacity>
         </View>
@@ -237,95 +308,126 @@ export default function StayScreen({ navigation }) {
     <View style={s.root}>
       <Header navigation={navigation} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={s.searchBar}>
-          <Search size={15} color={C.ts} strokeWidth={1.8} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search guest houses..."
-            placeholderTextColor={C.tm}
-            style={s.searchInput}
-          />
-          {!!query && (
-            <TouchableOpacity onPress={() => setQuery('')}>
-              <X size={14} color={C.ts} strokeWidth={2} />
-            </TouchableOpacity>
-          )}
-        </View>
+        {!selected ? (
+          <>
+            <View style={s.searchBar}>
+              <Search size={15} color={C.ts} strokeWidth={1.8} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search guest houses..."
+                placeholderTextColor={C.tm}
+                style={s.searchInput}
+              />
+              {!!searchQuery && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={14} color={C.ts} strokeWidth={2} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-        <Text style={s.sectionLabel}>Choose accommodation</Text>
-        {loadingAvailability && <Text style={s.availabilityHint}>Checking live availability...</Text>}
-        <View style={s.stayList}>
-          {filtered.map((item) => {
-            const active = selected?.id === item.id;
-            const itemAvailability = getAvailability(item, bookings, checkIn, checkOut);
-            const totalAvailable = Object.values(itemAvailability).reduce((sum, value) => sum + value, 0);
-            const isAvailable = totalAvailable > 0;
-            return (
-              <TouchableOpacity key={item.id} onPress={() => setSelectedId(item.id)} style={[s.stayCard, active && s.stayCardActive]} activeOpacity={0.84}>
-                <View style={[s.stayIcon, active && s.stayIconActive]}>
-                  <Home size={18} color={active ? C.gold : '#2A7FAB'} strokeWidth={1.8} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.stayName}>{item.name}</Text>
-                  <Text style={s.stayDesc}>{item.description}</Text>
-                  <View style={[s.availabilityPill, isAvailable ? s.availablePill : s.takenPill]}>
-                    <Text style={[s.availabilityText, { color: isAvailable ? C.green : C.red }]}>
-                      {isAvailable ? `${totalAvailable} room(s) available` : 'Taken / not available'}
-                    </Text>
-                  </View>
-                  <View style={s.stayMeta}>
-                    <MapPin size={10} color={C.gold} strokeWidth={2} />
-                    <Text style={s.stayMetaText}>{item.shortName || item.subcategory || 'Redemption City'}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => callAccommodation(item.phone)} style={s.inlinePhone} activeOpacity={0.75}>
-                    <Phone size={11} color="#49BDEB" strokeWidth={2} />
-                    <Text style={s.inlinePhoneText}>{item.phone}</Text>
+            <Text style={s.sectionLabel}>Choose accommodation</Text>
+            {loadingAvailability && <Text style={s.availabilityHint}>Checking live availability...</Text>}
+            <View style={s.stayList}>
+              {filtered.map((item) => {
+                const itemAvailability = getAvailability(item, bookings, checkIn, checkOut);
+                const totalAvailable = Object.values(itemAvailability).reduce((sum, value) => sum + value, 0);
+                const isAvailable = totalAvailable > 0;
+                return (
+                  <TouchableOpacity key={item.id} onPress={() => setBookingAccommodationId(item.id)} style={s.stayCard} activeOpacity={0.84}>
+                    <View style={s.stayIcon}>
+                      <Home size={18} color="#2A7FAB" strokeWidth={1.8} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.stayName}>{item.name}</Text>
+                      <Text style={s.stayDesc}>{item.description}</Text>
+                      <View style={[s.availabilityPill, isAvailable ? s.availablePill : s.takenPill]}>
+                        <Text style={[s.availabilityText, { color: isAvailable ? C.green : C.red }]}>
+                          {isAvailable ? `${totalAvailable} room(s) available` : 'Taken / not available'}
+                        </Text>
+                      </View>
+                      <View style={s.stayMeta}>
+                        <MapPin size={10} color={C.gold} strokeWidth={2} />
+                        <Text style={s.stayMetaText}>{item.shortName || item.subcategory || 'Redemption City'}</Text>
+                      </View>
+                      <View style={s.cardFooter}>
+                        <TouchableOpacity onPress={() => callAccommodation(item.phone)} style={s.inlinePhone} activeOpacity={0.75}>
+                          <Phone size={11} color="#49BDEB" strokeWidth={2} />
+                          <Text style={s.inlinePhoneText}>{item.phone}</Text>
+                        </TouchableOpacity>
+                        <Text style={s.selectRoomsText}>Select rooms</Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={s.sectionLabel}>Room type</Text>
-        {ROOM_TYPES.map((room) => {
-          const active = roomType === room.id;
-          const roomAvailable = availability[room.id] ?? 0;
-          const taken = roomAvailable <= 0;
-          return (
-            <TouchableOpacity key={room.id} onPress={() => setRoomType(room.id)} style={[s.roomCard, active && s.roomCardActive, taken && s.roomCardTaken]} activeOpacity={0.84}>
-              <BedDouble size={18} color={active ? C.purpleL : C.ts} strokeWidth={1.8} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.roomTitle}>{room.label}</Text>
-                <Text style={s.roomNote}>{taken ? 'Taken for selected dates' : `${roomAvailable} available - ${room.note}`}</Text>
-              </View>
-              <Text style={s.roomPrice}>{money(room.price)}</Text>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity onPress={() => setBookingAccommodationId(null)} style={s.changeStayBtn} activeOpacity={0.78}>
+              <ChevronLeft size={14} color={C.gold} strokeWidth={2} />
+              <Text style={s.changeStayText}>Choose another accommodation</Text>
             </TouchableOpacity>
-          );
-        })}
 
-        <Text style={s.sectionLabel}>Stay details</Text>
-        <View style={s.formCard}>
-          <InputRow Icon={CalendarDays} label="Check-in" value={checkIn} onChangeText={setCheckIn} placeholder="2026-06-11" />
-          <InputRow Icon={CalendarDays} label="Check-out" value={checkOut} onChangeText={setCheckOut} placeholder="2026-06-12" />
-          <InputRow Icon={Users} label="Guests" value={guests} onChangeText={setGuests} placeholder="1" keyboardType="number-pad" />
-        </View>
+            <View style={[s.stayCard, s.stayCardActive, { marginBottom: 16 }]}>
+              <View style={[s.stayIcon, s.stayIconActive]}>
+                <Home size={18} color={C.gold} strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.stayName}>{selected.name}</Text>
+                <Text style={s.stayDesc}>{selected.description}</Text>
+                <TouchableOpacity onPress={() => callAccommodation(selected.phone)} style={s.inlinePhone} activeOpacity={0.75}>
+                  <Phone size={11} color="#49BDEB" strokeWidth={2} />
+                  <Text style={s.inlinePhoneText}>{selected.phone}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-        <View style={s.paymentCard}>
-          <View>
-            <Text style={s.paymentLabel}>Estimated total</Text>
-            <Text style={s.paymentAmount}>{money(total)}</Text>
-            <Text style={s.paymentSub}>{nights} night(s) + service fee</Text>
-          </View>
-          <CreditCard size={24} color={C.gold} strokeWidth={1.7} />
-        </View>
+            <Text style={s.sectionLabel}>Select room</Text>
+            {ROOM_TYPES.map((room) => {
+              const active = roomType === room.id;
+              const roomAvailable = availability[room.id] ?? 0;
+              const taken = roomAvailable <= 0;
+              return (
+                <TouchableOpacity key={room.id} onPress={() => setRoomType(room.id)} style={[s.roomCard, active && s.roomCardActive, taken && s.roomCardTaken]} activeOpacity={0.84}>
+                  <BedDouble size={18} color={active ? C.purpleL : C.ts} strokeWidth={1.8} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.roomTitle}>{room.label}</Text>
+                    <Text style={s.roomNote}>{taken ? 'Taken for selected dates' : `${roomAvailable} available - ${room.note}`}</Text>
+                  </View>
+                  <Text style={s.roomPrice}>{money(room.price)}</Text>
+                </TouchableOpacity>
+              );
+            })}
 
-        <TouchableOpacity onPress={handleBooking} activeOpacity={0.86} style={{ marginBottom: 18 }} disabled={selectedAvailable <= 0 || booking}>
-          <LinearGradient colors={selectedAvailable <= 0 ? ['rgba(212,79,79,0.38)', 'rgba(212,79,79,0.28)'] : ['#7128CE', '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bookBtn}>
-            {booking ? <ActivityIndicator color="#fff" /> : <Text style={s.bookText}>{selectedAvailable <= 0 ? 'Not Available' : `Book & Pay ${money(total)}`}</Text>}
-          </LinearGradient>
-        </TouchableOpacity>
+            <Text style={s.sectionLabel}>Stay details</Text>
+            <View style={s.formCard}>
+              <InputRow Icon={CalendarDays} label="Check-in" value={checkIn} onChangeText={setCheckIn} placeholder="2026-06-11" />
+              <InputRow Icon={CalendarDays} label="Check-out" value={checkOut} onChangeText={setCheckOut} placeholder="2026-06-12" />
+              <InputRow Icon={Users} label="Guests" value={guests} onChangeText={setGuests} placeholder="1" keyboardType="number-pad" />
+              <InputRow Icon={Users} label="Full name" value={guestName} onChangeText={setGuestName} placeholder="Guest name" />
+              <InputRow Icon={Phone} label="Phone" value={guestPhone} onChangeText={setGuestPhone} placeholder="080..." keyboardType="phone-pad" />
+              <InputRow Icon={Home} label="Email" value={guestEmail} onChangeText={setGuestEmail} placeholder="optional@email.com" keyboardType="email-address" autoCapitalize="none" />
+              <InputRow Icon={CreditCard} label="Requests" value={notes} onChangeText={setNotes} placeholder="Optional note" multiline />
+            </View>
+
+            <View style={s.paymentCard}>
+              <View>
+                <Text style={s.paymentLabel}>Estimated total</Text>
+                <Text style={s.paymentAmount}>{money(total)}</Text>
+                <Text style={s.paymentSub}>{nights} night(s) + service fee</Text>
+              </View>
+              <CreditCard size={24} color={C.gold} strokeWidth={1.7} />
+            </View>
+
+            <TouchableOpacity onPress={handleBooking} activeOpacity={0.86} style={{ marginBottom: 18 }} disabled={selectedAvailable <= 0 || booking}>
+              <LinearGradient colors={selectedAvailable <= 0 ? ['rgba(212,79,79,0.38)', 'rgba(212,79,79,0.28)'] : ['#7128CE', '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bookBtn}>
+                {booking ? <ActivityIndicator color="#fff" /> : <Text style={s.bookText}>{selectedAvailable <= 0 ? 'Not Available' : `Book ${money(total)}`}</Text>}
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -390,8 +492,12 @@ const s = StyleSheet.create({
   availabilityText: { fontSize: 10, fontWeight: '800' },
   stayMeta: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   stayMetaText: { fontSize: 10.5, color: C.gold, fontWeight: '700', marginLeft: 4 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   inlinePhone: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 11, backgroundColor: 'rgba(73,189,235,0.1)', borderWidth: 1, borderColor: 'rgba(73,189,235,0.24)' },
   inlinePhoneText: { color: '#49BDEB', fontSize: 11, fontWeight: '700' },
+  selectRoomsText: { color: C.gold, fontSize: 11, fontWeight: '900' },
+  changeStayBtn: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 13, backgroundColor: 'rgba(196,141,56,0.1)', borderWidth: 1, borderColor: 'rgba(196,141,56,0.25)', marginBottom: 12 },
+  changeStayText: { color: C.gold, fontSize: 11.5, fontWeight: '800' },
   roomCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, marginBottom: 9 },
   roomCardActive: { backgroundColor: 'rgba(113,40,206,0.12)', borderColor: 'rgba(148,88,224,0.42)' },
   roomCardTaken: { opacity: 0.62, borderColor: 'rgba(212,79,79,0.22)' },
