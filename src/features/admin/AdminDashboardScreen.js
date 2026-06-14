@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Bell,
+  BookOpen,
   Camera,
   ChevronLeft,
   Edit3,
@@ -68,12 +69,37 @@ const EMPTY_PICTURE_FORM = {
   setAsToday: true,
   photo: null,
 };
+const EMPTY_DEVOTIONAL_FORM = {
+  date: '',
+  topic: '',
+  verse: '',
+  ref: '',
+  reading: '',
+  text: '',
+  link: 'https://eopenheavens.com',
+  visible: true,
+};
 
 function normalizeDate(value) {
   if (!value) return 'Recently';
   if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return String(value);
+}
+
+function todayKey() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function isValidDateKey(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
 function reportTitle(item) {
@@ -135,8 +161,12 @@ export default function AdminDashboardScreen({ navigation }) {
   const [editingNews, setEditingNews] = useState(null);
   const [newsForm, setNewsForm] = useState(EMPTY_NEWS_FORM);
   const [pictureForm, setPictureForm] = useState(EMPTY_PICTURE_FORM);
+  const [devotionalForm, setDevotionalForm] = useState({ ...EMPTY_DEVOTIONAL_FORM, date: todayKey() });
   const [savingNews, setSavingNews] = useState(false);
   const [savingPicture, setSavingPicture] = useState(false);
+  const [savingDevotional, setSavingDevotional] = useState(false);
+  const [devotionalItems, setDevotionalItems] = useState([]);
+  const [loadingDevotionals, setLoadingDevotionals] = useState(true);
   const [updatingReportId, setUpdatingReportId] = useState(null);
 
   const loadReports = useCallback(async () => {
@@ -163,11 +193,23 @@ export default function AdminDashboardScreen({ navigation }) {
     }
   }, []);
 
+  const loadDevotionals = useCallback(async () => {
+    setLoadingDevotionals(true);
+    try {
+      const snap = await getDocs(query(collection(db, 'openHeavenDevotionals'), orderBy('date', 'desc')));
+      setDevotionalItems(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+    } catch (err) {
+      Alert.alert('Could not load devotionals', err?.message || 'Please check your connection and try again.');
+    } finally {
+      setLoadingDevotionals(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadReports(), loadNews()]);
+    await Promise.all([loadReports(), loadNews(), loadDevotionals()]);
     setRefreshing(false);
-  }, [loadNews, loadReports]);
+  }, [loadDevotionals, loadNews, loadReports]);
 
   useEffect(() => {
     refreshAll();
@@ -322,6 +364,54 @@ export default function AdminDashboardScreen({ navigation }) {
     }
   }
 
+  function editDevotional(item) {
+    setDevotionalForm({
+      date: item.date || item.id || todayKey(),
+      topic: item.topic || '',
+      verse: item.verse || '',
+      ref: item.ref || item.reference || '',
+      reading: item.reading || '',
+      text: item.text || item.body || '',
+      link: item.link || 'https://eopenheavens.com',
+      visible: item.visible !== false,
+    });
+    setActiveTab('devotionals');
+  }
+
+  async function saveDevotional() {
+    const date = devotionalForm.date.trim();
+    if (!isValidDateKey(date) || !devotionalForm.topic.trim() || !devotionalForm.text.trim()) {
+      Alert.alert('Missing devotional details', 'Please add a valid date, topic, and devotional text.');
+      return;
+    }
+
+    setSavingDevotional(true);
+    try {
+      const payload = {
+        date,
+        topic: devotionalForm.topic.trim(),
+        verse: devotionalForm.verse.trim(),
+        ref: devotionalForm.ref.trim(),
+        reading: devotionalForm.reading.trim(),
+        text: devotionalForm.text.trim(),
+        link: devotionalForm.link.trim() || 'https://eopenheavens.com',
+        visible: devotionalForm.visible !== false,
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, 'openHeavenDevotionals', date), {
+        ...payload,
+        createdAt: serverTimestamp(),
+      }, { merge: true });
+      setDevotionalForm({ ...EMPTY_DEVOTIONAL_FORM, date: todayKey() });
+      await loadDevotionals();
+      Alert.alert('Devotional saved', `Open Heaven devotional scheduled for ${date}.`);
+    } catch (err) {
+      Alert.alert('Could not save devotional', err?.message || 'Please try again.');
+    } finally {
+      setSavingDevotional(false);
+    }
+  }
+
   function confirmDeleteNews(item) {
     Alert.alert(
       'Delete news item?',
@@ -364,6 +454,7 @@ export default function AdminDashboardScreen({ navigation }) {
           ['lost', 'Lost & Found'],
           ['news', 'News & Updates'],
           ['pictures', 'Pictures'],
+          ['devotionals', 'Devotionals'],
         ].map(([id, label]) => (
           <TouchableOpacity key={id} onPress={() => setActiveTab(id)} style={[s.tab, activeTab === id && s.tabActive]} activeOpacity={0.85}>
             <Text style={[s.tabText, activeTab === id && s.tabTextActive]}>{label}</Text>
@@ -456,7 +547,7 @@ export default function AdminDashboardScreen({ navigation }) {
             ))
           )}
         </ScrollView>
-      ) : (
+      ) : activeTab === 'pictures' ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scroll}
@@ -522,6 +613,78 @@ export default function AdminDashboardScreen({ navigation }) {
               </LinearGradient>
             </TouchableOpacity>
           </View>
+        </ScrollView>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.scroll}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={C.gold} />}
+        >
+          <View style={s.pictureAdminCard}>
+            <View style={s.cardTop}>
+              <View style={s.cardIcon}>
+                <BookOpen size={15} color={C.gold} strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>Open Heaven Devotional</Text>
+                <Text style={s.cardSub}>Create today's devotional or schedule a future date</Text>
+              </View>
+            </View>
+
+            <Text style={s.label}>Date</Text>
+            <TextInput value={devotionalForm.date} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, date: value }))} placeholder="YYYY-MM-DD" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Topic</Text>
+            <TextInput value={devotionalForm.topic} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, topic: value }))} placeholder="Devotional topic" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Verse</Text>
+            <TextInput value={devotionalForm.verse} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, verse: value }))} placeholder="Bible verse text" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Reference</Text>
+            <TextInput value={devotionalForm.ref} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, ref: value }))} placeholder="Psalm 150:6" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Reading</Text>
+            <TextInput value={devotionalForm.reading} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, reading: value }))} placeholder="Psalm 150" placeholderTextColor={C.tm} style={s.input} />
+            <Text style={s.label}>Devotional Text</Text>
+            <TextInput value={devotionalForm.text} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, text: value }))} placeholder="Write today's devotional..." placeholderTextColor={C.tm} multiline style={[s.input, s.textArea]} />
+            <Text style={s.label}>Official Link</Text>
+            <TextInput value={devotionalForm.link} onChangeText={(value) => setDevotionalForm((current) => ({ ...current, link: value }))} placeholder="https://eopenheavens.com" placeholderTextColor={C.tm} style={s.input} autoCapitalize="none" />
+
+            <View style={s.switchRow}>
+              <View>
+                <Text style={s.switchTitle}>Show when date is today</Text>
+                <Text style={s.switchSub}>The home screen reads the document matching today's date</Text>
+              </View>
+              <Switch
+                value={devotionalForm.visible}
+                onValueChange={(value) => setDevotionalForm((current) => ({ ...current, visible: value }))}
+                trackColor={{ false: 'rgba(255,255,255,0.12)', true: C.purple }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <TouchableOpacity onPress={saveDevotional} disabled={savingDevotional} activeOpacity={0.86}>
+              <LinearGradient colors={[C.purple, '#5A18A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.saveBtn, savingDevotional && s.disabledBtn]}>
+                {savingDevotional ? <ActivityIndicator color="#fff" /> : <Text style={s.saveText}>Save Devotional</Text>}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={s.devotionalListTitle}>Scheduled devotionals</Text>
+          {loadingDevotionals ? (
+            <Loader label="Loading devotionals..." />
+          ) : devotionalItems.length === 0 ? (
+            <EmptyState title="No devotionals yet" body="Create the first Open Heaven devotional above." />
+          ) : devotionalItems.slice(0, 10).map((item) => (
+            <TouchableOpacity key={item.id} onPress={() => editDevotional(item)} style={s.newsCard} activeOpacity={0.84}>
+              <View style={s.cardTop}>
+                <View style={s.cardIcon}>
+                  <BookOpen size={15} color={C.purpleL} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cardTitle} numberOfLines={1}>{item.topic || 'Untitled devotional'}</Text>
+                  <Text style={s.cardSub}>{item.date || item.id}</Text>
+                </View>
+              </View>
+              <Text style={s.cardBody} numberOfLines={2}>{item.text || 'No devotional text.'}</Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       )}
 
@@ -736,6 +899,7 @@ const s = StyleSheet.create({
   pictureDrop: { height: 180, borderRadius: 16, borderWidth: 1, borderColor: C.b, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   pictureDropText: { fontSize: 12, color: C.ts, fontWeight: '700' },
   pictureActions: { flexDirection: 'row', gap: 9, marginBottom: 12 },
+  devotionalListTitle: { fontSize: 11, fontWeight: '900', color: C.tm, letterSpacing: 1, textTransform: 'uppercase', marginTop: 18, marginBottom: 10 },
   actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 13, backgroundColor: 'rgba(148,88,224,0.1)', borderWidth: 1, borderColor: 'rgba(148,88,224,0.25)', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 7 },
   deleteAction: { backgroundColor: 'rgba(212,79,79,0.08)', borderColor: 'rgba(212,79,79,0.22)' },
   actionText: { fontSize: 12, fontWeight: '700', color: C.purpleL },

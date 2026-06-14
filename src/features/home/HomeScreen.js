@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   AlertCircle,
   ArrowRight,
@@ -101,6 +101,7 @@ const OPEN_HEAVENS_LINKS = {
   android: "https://play.google.com/store/apps/details?id=com.open_heavens",
   ios: "https://apps.apple.com/us/app/open-heavens-devotional/id6471082691",
 };
+const RCCG_LIVE_YOUTUBE = "https://www.youtube.com/@rccglive/";
 
 const ACTIONS = [
   { Icon: Navigation, label: "Navigate", sub: "Live city map", color: "#7128CE", route: "Navigation" },
@@ -133,6 +134,7 @@ export default function HomeScreen() {
   const { user } = useUserProfile();
   const [showWeather, setShowWeather] = useState(false);
   const [showDevotional, setShowDevotional] = useState(false);
+  const [devotional, setDevotional] = useState(DEVOTIONAL);
   const tr = (value) => translateText(value, language);
   const firstName = user?.firstName || "Guest";
   const showBirthdayBanner = isBirthdayToday(user);
@@ -146,6 +148,25 @@ export default function HomeScreen() {
 
   const goTab = (name) => navigation.getParent()?.navigate(name);
   const goRoute = (name, params) => navigation.navigate(name, params);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadTodayDevotional() {
+      try {
+        const key = dateKey();
+        const snap = await getDoc(doc(db, "openHeavenDevotionals", key));
+        if (mounted && snap.exists() && snap.data()?.visible !== false) {
+          setDevotional(normalizeDevotional(snap.data(), key));
+        }
+      } catch (error) {
+        console.warn("Could not load Open Heaven devotional:", error?.code || error?.message);
+      }
+    }
+    loadTodayDevotional();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <View style={s.root}>
@@ -188,7 +209,7 @@ export default function HomeScreen() {
 
         <QuoteOfTheDay tr={tr} />
 
-        <HeroCard tr={tr} onDirections={() => goRoute("Navigation", { initialDest: "NEW ARENA Auditorium" })} onDetails={() => goRoute("EventDetail", { eventId: "victory-service" })} />
+        <HeroCard tr={tr} onDirections={() => goRoute("Navigation", { initialDest: "NEW ARENA Auditorium" })} onDetails={() => openExternalUrl(RCCG_LIVE_YOUTUBE)} />
 
         <SosBanner tr={tr} onPress={() => goRoute("Emergency")} />
 
@@ -234,16 +255,35 @@ export default function HomeScreen() {
 
         <QuizCard tr={tr} onPress={() => goRoute("Quiz")} />
 
-        <DevotionalCard tr={tr} onOpen={() => setShowDevotional(true)} />
+        <DevotionalCard tr={tr} devotional={devotional} onOpen={() => setShowDevotional(true)} />
 
         <View style={{ height: 8 }} />
       </ScrollView>
 
       {/* WeatherModal is no longer needed since WeatherWidget has its own modal */}
       {/* Keep the OpenHeavensModal */}
-      <OpenHeavensModal tr={tr} visible={showDevotional} onClose={() => setShowDevotional(false)} />
+      <OpenHeavensModal tr={tr} devotional={devotional} visible={showDevotional} onClose={() => setShowDevotional(false)} />
     </View>
   );
+}
+
+function dateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDevotional(data, key) {
+  return {
+    date: data?.date || key || "Today",
+    topic: data?.topic || data?.title || DEVOTIONAL.topic,
+    text: data?.text || data?.body || DEVOTIONAL.text,
+    verse: data?.verse || DEVOTIONAL.verse,
+    ref: data?.ref || data?.reference || DEVOTIONAL.ref,
+    reading: data?.reading || DEVOTIONAL.reading,
+    link: data?.link || OPEN_HEAVENS_LINKS.website,
+  };
 }
 
 // ... rest of the helper functions remain the same ...
@@ -387,10 +427,10 @@ function HeroCard({ tr, onDirections, onDetails }) {
       <LinearGradient colors={["rgba(90,18,165,0.94)", "rgba(38,8,75,0.97)", "rgba(10,2,24,1)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroCard}>
         <View style={s.heroGlow} />
         <View style={s.heroTop}>
-          <View style={s.liveChip}>
+          <TouchableOpacity onPress={onDetails} style={s.liveChip} activeOpacity={0.82}>
             <PulsingDot size={5} color="#F06565" />
             <Text style={s.liveText}>{tr("LIVE NOW")}</Text>
-          </View>
+          </TouchableOpacity>
           <View style={s.heroLine} />
           <Text style={s.todayText}>{tr("Today")}</Text>
         </View>
@@ -411,7 +451,7 @@ function HeroCard({ tr, onDirections, onDetails }) {
             <Text style={s.heroBtnPrimaryText}>{tr("Get Directions")}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.heroBtnSecondary} onPress={onDetails} activeOpacity={0.85}>
-            <Text style={s.heroBtnSecondaryText}>{tr("View Details")}</Text>
+            <Text style={s.heroBtnSecondaryText}>{tr("Watch Live")}</Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -697,7 +737,8 @@ function QuizCard({ tr, onPress }) {
   );
 }
 
-function DevotionalCard({ tr, onOpen }) {
+function DevotionalCard({ tr, devotional, onOpen }) {
+  const current = devotional || DEVOTIONAL;
   return (
     <View style={s.section}>
       <SectionHeader tr={tr} title="Open Heaven Devotional" action="Read Full" onAction={onOpen} />
@@ -707,20 +748,20 @@ function DevotionalCard({ tr, onOpen }) {
             <BookOpen size={17} color={C.purpleL} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.devotionalKicker}>{tr(`${DEVOTIONAL.date}'s Devotional`)}</Text>
-            <Text style={s.devotionalTitle}>{tr(DEVOTIONAL.topic)}</Text>
+            <Text style={s.devotionalKicker}>{tr(`${current.date || "Today"}'s Devotional`)}</Text>
+            <Text style={s.devotionalTitle}>{tr(current.topic)}</Text>
           </View>
         </View>
         <View style={s.devotionalBody}>
           <View style={s.verseBox}>
-            <Text style={s.verseText}>"{tr(DEVOTIONAL.verse)}"</Text>
-            <Text style={s.verseRef}>{DEVOTIONAL.ref}</Text>
+            <Text style={s.verseText}>"{tr(current.verse)}"</Text>
+            <Text style={s.verseRef}>{current.ref}</Text>
           </View>
-          <Text style={s.devotionalText}>{tr(DEVOTIONAL.text)}</Text>
+          <Text style={s.devotionalText}>{tr(current.text)}</Text>
           <View style={s.devotionalBottom}>
             <View style={s.readingPill}>
               <BookOpen size={12} color={C.gold} strokeWidth={2} />
-              <Text style={s.readingText}>{tr("Reading")}: {DEVOTIONAL.reading}</Text>
+              <Text style={s.readingText}>{tr("Reading")}: {current.reading}</Text>
             </View>
             <View style={s.heartBtn}>
               <ArrowRight size={15} color={C.gold} strokeWidth={2.2} />
@@ -732,13 +773,14 @@ function DevotionalCard({ tr, onOpen }) {
   );
 }
 
-function OpenHeavensModal({ tr, visible, onClose }) {
+function OpenHeavensModal({ tr, devotional, visible, onClose }) {
+  const current = devotional || DEVOTIONAL;
   const storeUrl = Platform.OS === "ios" ? OPEN_HEAVENS_LINKS.ios : OPEN_HEAVENS_LINKS.android;
   const storeLabel = Platform.OS === "ios" ? "Open App Store" : "Open Play Store";
 
   const openWebsite = () => {
     onClose();
-    openExternalUrl(OPEN_HEAVENS_LINKS.website);
+    openExternalUrl(current.link || OPEN_HEAVENS_LINKS.website);
   };
 
   const openStore = () => {
@@ -765,9 +807,11 @@ function OpenHeavensModal({ tr, visible, onClose }) {
         </View>
 
         <View style={s.openHeavensNotice}>
-          <Text style={s.openHeavensNoticeText}>
-            {tr("The official Open Heavens Devotional app is available on Google Play and the Apple App Store. eOpenHeavens also provides the official download links.")}
-          </Text>
+          <Text style={s.openHeavensDevotionalTopic}>{tr(current.topic)}</Text>
+          <Text style={s.openHeavensVerse}>"{tr(current.verse)}"</Text>
+          <Text style={s.openHeavensRef}>{current.ref}</Text>
+          <Text style={s.openHeavensNoticeText}>{tr(current.text)}</Text>
+          <Text style={s.openHeavensReading}>{tr("Reading")}: {current.reading}</Text>
         </View>
 
         <TouchableOpacity onPress={openWebsite} activeOpacity={0.86}>
@@ -1005,7 +1049,11 @@ const s = StyleSheet.create({
   openHeavensTitle: { fontSize: 16, fontWeight: "800", color: C.tp },
   openHeavensSub: { fontSize: 11.5, color: C.ts, lineHeight: 17, marginTop: 3 },
   openHeavensNotice: { backgroundColor: C.surf, borderWidth: 1, borderColor: C.b, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
+  openHeavensDevotionalTopic: { fontSize: 14, fontWeight: "800", color: C.tp, marginBottom: 7 },
+  openHeavensVerse: { fontSize: 12, color: C.tp, fontStyle: "italic", lineHeight: 18, marginBottom: 4 },
+  openHeavensRef: { fontSize: 10.5, color: C.gold, fontWeight: "700", marginBottom: 9 },
   openHeavensNoticeText: { fontSize: 12, lineHeight: 19, color: C.ts },
+  openHeavensReading: { fontSize: 10.5, color: C.gold, fontWeight: "700", marginTop: 9 },
   openHeavensPrimary: { height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, marginBottom: 9 },
   openHeavensPrimaryText: { fontSize: 13, fontWeight: "800", color: "#fff" },
   openHeavensSecondary: { height: 46, borderRadius: 15, borderWidth: 1, borderColor: "rgba(196,141,56,0.28)", backgroundColor: "rgba(196,141,56,0.08)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },

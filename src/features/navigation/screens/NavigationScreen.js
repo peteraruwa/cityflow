@@ -41,7 +41,6 @@ import { usePrefs } from '../../../shared/context/PrefsContext';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_PEEK = 220;
 const MAX_ACCEPTED_ACCURACY_METERS = 100;
-const MAX_MAP_DISTANCE_METERS = 2000;
 
 const PURPLE   = '#7128CE';
 const PURPLE_L = '#9B5CF6';
@@ -257,12 +256,6 @@ const getValidatedLocationMeta = (coords) => {
     latitude: CAMP_REGION.latitude,
     longitude: CAMP_REGION.longitude,
   });
-  if (distanceFromCamp > MAX_MAP_DISTANCE_METERS) {
-    return {
-      valid: false,
-      message: `Your GPS point is ${formatDistance(distanceFromCamp)} from the mapped camp area. Navigation is limited to within ${formatDistance(MAX_MAP_DISTANCE_METERS)} of Redemption City.`,
-    };
-  }
 
   const nearest = getNearestLandmark(coords);
   return {
